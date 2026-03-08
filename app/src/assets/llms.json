@@ -1,4 +1,34 @@
 [
+{
+"id": "qwen3.5-4b-mlx-4bit",
+    "name": "Qwen3.5 4B MLX 4bit",
+    "repo_id": "mlx-community/Qwen3.5-4B-MLX-4bit",
+    "params": "4B",
+    "quantization": "4bit",
+    "specialty": "general",
+    "thinking": false,
+    "vision": true
+},
+{
+"id": "qwen3.5-9b-mlx-4bit",
+    "name": "Qwen3.5 9B MLX 4bit",
+    "repo_id": "mlx-community/Qwen3.5-9B-MLX-4bit",
+    "params": "9B",
+    "quantization": "4bit",
+    "specialty": "general",
+    "thinking": false,
+    "vision": true
+},
+  {
+    "id": "qwen3.5-2b-bf16",
+    "name": "Qwen3.5 2B BF16",
+    "repo_id": "mlx-community/Qwen3.5-2B-bf16",
+    "params": "2B",
+    "quantization": "bf16",
+    "specialty": "general",
+    "thinking": false,
+    "vision": true
+  },
   {
     "id": "ministral-3-3b-4bit",
     "name": "Ministral 3 3B Instruct",

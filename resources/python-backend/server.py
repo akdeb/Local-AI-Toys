@@ -29,7 +29,6 @@ import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from starlette.websockets import WebSocketState
-from mlx_lm.utils import load as load_llm
 import db_service  # DB ops exposed via HTTP endpoints
 from fastapi.middleware.cors import CORSMiddleware
 import utils
@@ -107,6 +106,15 @@ def _is_thinking_model(repo_id: str) -> bool:
     return bool(profile and profile.get("thinking"))
 
 
+def _normalize_tts_backend(backend: Optional[str]) -> str:
+    value = (backend or "").strip().lower()
+    if value in {"", "qwen3-tts", "qwen3_tts", "qwen3"}:
+        return "qwen3-tts"
+    if value in {"chatterbox", "chatterbox-turbo", "chatterbox_turbo"}:
+        return "chatterbox-turbo"
+    return "qwen3-tts"
+
+
 def _strip_thinking(text: str) -> str:
     if not text:
         return text
@@ -166,7 +174,12 @@ async def lifespan(app: FastAPI):
     if not hasattr(app.state, "llm_model"):
         app.state.llm_model = db_service.db_service.get_setting("llm_model") or LLM
     if not hasattr(app.state, "tts_backend"):
-        app.state.tts_backend = db_service.db_service.get_setting("tts_backend") or "chatterbox"
+        stored_tts_backend = db_service.db_service.get_setting("tts_backend")
+        if not stored_tts_backend:
+            db_service.db_service.set_setting("tts_backend", "qwen3-tts")
+        app.state.tts_backend = _normalize_tts_backend(
+            stored_tts_backend or "qwen3-tts"
+        )
     # if not hasattr(app.state, "tts_ref_audio"):
     #     app.state.tts_ref_audio = os.path.join(os.path.dirname(__file__), "tts", "santa.wav")
     if not hasattr(app.state, "silence_threshold"):
@@ -294,15 +307,18 @@ async def get_setting(key: str):
 @app.put("/settings/{key}")
 async def set_setting(key: str, body: SettingUpdate):
     """Set a setting value."""
-    db_service.db_service.set_setting(key, body.value)
     if key == "tts_backend":
         try:
+            normalized = _normalize_tts_backend(body.value)
+            db_service.db_service.set_setting(key, normalized)
             if pipeline:
-                await pipeline.set_tts_backend(body.value or "")
+                await pipeline.set_tts_backend(normalized)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+        return {"key": key, "value": normalized}
+    db_service.db_service.set_setting(key, body.value)
     return {"key": key, "value": body.value}
 
 @app.delete("/settings/{key}")
@@ -431,6 +447,15 @@ import webrtcvad
 @app.get("/models")
 async def get_models():
     """Get current model configuration."""
+    tts_backend = _normalize_tts_backend(
+        getattr(pipeline, "tts_backend", None)
+        or db_service.db_service.get_setting("tts_backend")
+        or "qwen3-tts"
+    )
+    tts_repo = None
+    if pipeline is not None and getattr(pipeline, "tts", None) is not None:
+        tts_repo = getattr(pipeline.tts, "model_id", None)
+
     return {
         "llm": {
             "backend": "mlx",
@@ -440,14 +465,14 @@ async def get_models():
             "loaded": pipeline is not None and pipeline.llm is not None,
         },
         "tts": {
-            "backend": (getattr(pipeline, "tts_backend", None) or db_service.db_service.get_setting("tts_backend") or "chatterbox"),
-            "backbone_repo": None,
+            "backend": tts_backend,
+            "backbone_repo": tts_repo,
             "codec_repo": None,
             "loaded": pipeline is not None and pipeline.tts is not None,
         },
         "stt": {
             "backend": "whisper",
-            "repo": "mlx-community/whisper-large-v3-turbo",
+            "repo": STT,
             "loaded": pipeline is not None and pipeline.stt is not None,
         }
     }
@@ -674,10 +699,11 @@ async def switch_model(body: ModelSwitchRequest):
             yield json.dumps({"stage": "loading", "progress": 0.0, "message": "Loading model weights..."}) + "\n"
             
             try:
+                if not pipeline:
+                    raise RuntimeError("Pipeline is not initialized")
+
                 # Load the new model
-                new_llm, new_tokenizer = await asyncio.to_thread(
-                    lambda: load_llm(model_repo)
-                )
+                new_llm, new_tokenizer, new_backend = await pipeline.load_llm_backend(model_repo)
                 
                 yield json.dumps({"stage": "loading", "progress": 0.5, "message": "Model loaded, swapping..."}) + "\n"
                 
@@ -691,6 +717,7 @@ async def switch_model(body: ModelSwitchRequest):
                         pipeline.llm = new_llm
                         pipeline.tokenizer = new_tokenizer
                         pipeline.llm_model = model_repo
+                        pipeline.llm_backend = new_backend
                         
                         # Clear old model from memory
                         del old_llm
@@ -1343,11 +1370,9 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
         tts_backend = (
             getattr(pipeline, "tts_backend", None)
             or db_service.db_service.get_setting("tts_backend")
-            or "chatterbox"
+            or "qwen3-tts"
         )
-        tts_backend = (tts_backend or "").strip().lower() or "chatterbox"
-        if tts_backend != "chatterbox":
-            tts_backend = "chatterbox"
+        tts_backend = _normalize_tts_backend(tts_backend)
 
         experience_type = getattr(personality, "type", "personality") if personality else "personality"
 
@@ -1356,12 +1381,13 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
             "Avoid punctuation like parentheses or colons or markdown that would not appear in conversational speech. Do not use Markdown formatting (no *, **, _, __, backticks). "
         )
 
-        behavior_constraints += (
-            "To add expressivity, you should occasionally use ONLY these paralinguistic cues in brackets: "
-            "[laugh], [chuckle], [sigh], [gasp], [cough], [clear throat], [sniff], [groan], [shush]. "
-            "Use only these cues naturally in context to enhance the conversational flow. "
-            "Examples: [chuckle] That is funny. [sigh] That was a long day."
-        )
+        if tts_backend == "chatterbox-turbo":
+            behavior_constraints += (
+                "To add expressivity, you should occasionally use ONLY these paralinguistic cues in brackets: "
+                "[laugh], [chuckle], [sigh], [gasp], [cough], [clear throat], [sniff], [groan], [shush]. "
+                "Use only these cues naturally in context to enhance the conversational flow. "
+                "Examples: [chuckle] That is funny. [sigh] That was a long day."
+            )
 
         if experience_type == "game":
             behavior_constraints += (
@@ -1475,7 +1501,7 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
         if thinking_model:
             greeting_text = _strip_thinking(greeting_text)
 
-        allow_paralinguistic = (getattr(pipeline, "tts_backend", None) or "chatterbox") == "chatterbox"
+        allow_paralinguistic = _normalize_tts_backend(getattr(pipeline, "tts_backend", None)) == "chatterbox-turbo"
         greeting_text = sanitize_spoken_text(greeting_text, allow_paralinguistic=allow_paralinguistic)
         
         logger.info(f"{client_label} Greeting: {greeting_text}")
@@ -1622,7 +1648,7 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
         raw_response = full_response
         if thinking_model:
             full_response = _strip_thinking(full_response)
-        allow_paralinguistic = (getattr(pipeline, "tts_backend", None) or "chatterbox") == "chatterbox"
+        allow_paralinguistic = _normalize_tts_backend(getattr(pipeline, "tts_backend", None)) == "chatterbox-turbo"
         full_response = sanitize_spoken_text(full_response, allow_paralinguistic=allow_paralinguistic)
         if raw_response != full_response:
             logger.info(
@@ -1667,34 +1693,41 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
 
         # Stream TTS audio
         ref_audio_path = resolve_voice_ref_audio_path(getattr(personality, "voice_id", None))
+        logger.info(
+            f"{client_label} TTS start backend={getattr(pipeline, 'tts_backend', 'unknown')} "
+            f"ref_audio={'yes' if ref_audio_path else 'no'}"
+        )
         
         if for_esp32:
             # ESP32: Encode to Opus and send binary
             opus_packets = []
             opus = create_opus_packetizer(lambda pkt: opus_packets.append(pkt))
-            
-            async for audio_chunk in pipeline.synthesize_speech(
-                full_response,
-                cancel_event,
-                ref_audio_path=ref_audio_path,
-            ):
-                if cancel_event.is_set() or not ws_open:
-                    break
-                
-                # Boost and limit audio (in-place)
-                # Ensure we have a mutable bytearray
-                chunk_mutable = bytearray(audio_chunk)
-                utils.boost_limit_pcm16le_in_place(chunk_mutable, gain_db=GAIN_DB, ceiling=CEILING)
-                
-                opus.push(chunk_mutable)
-                while opus_packets:
-                    try:
-                        await websocket.send_bytes(opus_packets.pop(0))
-                    except Exception:
-                        cancel_event.set()
+            try:
+                async for audio_chunk in pipeline.synthesize_speech(
+                    full_response,
+                    cancel_event,
+                    ref_audio_path=ref_audio_path,
+                ):
+                    if cancel_event.is_set() or not ws_open:
                         break
-            
-            opus.flush(pad_final_frame=True)
+                    
+                    # Boost and limit audio (in-place)
+                    # Ensure we have a mutable bytearray
+                    chunk_mutable = bytearray(audio_chunk)
+                    utils.boost_limit_pcm16le_in_place(chunk_mutable, gain_db=GAIN_DB, ceiling=CEILING)
+                    
+                    opus.push(chunk_mutable)
+                    while opus_packets:
+                        try:
+                            await websocket.send_bytes(opus_packets.pop(0))
+                        except Exception:
+                            cancel_event.set()
+                            break
+            except Exception as e:
+                logger.error(f"{client_label} TTS stream error (esp32): {e}")
+                cancel_event.set()
+            finally:
+                opus.flush(pad_final_frame=True)
             while opus_packets:
                 try:
                     await websocket.send_bytes(opus_packets.pop(0))
@@ -1711,40 +1744,44 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
             buffered = bytearray()
             started = False
 
-            async for audio_chunk in pipeline.synthesize_speech(
-                full_response,
-                cancel_event,
-                ref_audio_path=ref_audio_path,
-            ):
-                if cancel_event.is_set() or not ws_open:
-                    break
-
-                if not started:
-                    buffered.extend(audio_chunk)
-                    if len(buffered) < PREBUFFER_BYTES:
-                        continue
-
-                    try:
-                        await websocket.send_text(
-                            json.dumps({
-                                "type": "audio",
-                                "data": base64.b64encode(bytes(buffered)).decode("utf-8"),
-                            })
-                        )
-                    except Exception:
+            try:
+                async for audio_chunk in pipeline.synthesize_speech(
+                    full_response,
+                    cancel_event,
+                    ref_audio_path=ref_audio_path,
+                ):
+                    if cancel_event.is_set() or not ws_open:
                         break
-                    buffered.clear()
-                    started = True
-                else:
-                    try:
-                        await websocket.send_text(
-                            json.dumps({
-                                "type": "audio",
-                                "data": base64.b64encode(audio_chunk).decode("utf-8"),
-                            })
-                        )
-                    except Exception:
-                        break
+
+                    if not started:
+                        buffered.extend(audio_chunk)
+                        if len(buffered) < PREBUFFER_BYTES:
+                            continue
+
+                        try:
+                            await websocket.send_text(
+                                json.dumps({
+                                    "type": "audio",
+                                    "data": base64.b64encode(bytes(buffered)).decode("utf-8"),
+                                })
+                            )
+                        except Exception:
+                            break
+                        buffered.clear()
+                        started = True
+                    else:
+                        try:
+                            await websocket.send_text(
+                                json.dumps({
+                                    "type": "audio",
+                                    "data": base64.b64encode(audio_chunk).decode("utf-8"),
+                                })
+                            )
+                        except Exception:
+                            break
+            except Exception as e:
+                logger.error(f"{client_label} TTS stream error (desktop): {e}")
+                cancel_event.set()
 
             # Flush remaining buffered audio
             if buffered:

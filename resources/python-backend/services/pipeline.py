@@ -1,13 +1,61 @@
 import asyncio
+import json
+import os
+import re
+from pathlib import Path
+from typing import Dict
 
 import mlx.core as mx
 import numpy as np
 from mlx_lm import generate as mx_generate
 from mlx_lm.utils import load as load_llm
-from mlx_audio.stt.models.whisper import Model as Whisper
+from mlx_audio.stt import load as load_stt
 
-from tts import ChatterboxTTS
-from utils import STT, LLM, TTS
+from tts import ChatterboxTTS, Qwen3TTS
+from utils import STT, LLM, TTS, QWEN3_TTS
+
+try:
+    from mlx_vlm import generate as mx_vlm_generate
+    from mlx_vlm import load as load_vlm
+except Exception:
+    mx_vlm_generate = None
+    load_vlm = None
+
+LLM_PROFILE_CACHE: Dict[str, Dict[str, object]] = {}
+
+
+def _load_llm_profiles() -> Dict[str, Dict[str, object]]:
+    if LLM_PROFILE_CACHE:
+        return LLM_PROFILE_CACHE
+    repo_root = Path(__file__).resolve().parents[3]
+    llms_path = repo_root / "app" / "src" / "assets" / "llms.json"
+    if not llms_path.exists():
+        return {}
+    try:
+        data = json.loads(llms_path.read_text(encoding="utf-8"))
+        for item in data if isinstance(data, list) else []:
+            if isinstance(item, dict) and isinstance(item.get("repo_id"), str):
+                LLM_PROFILE_CACHE[item["repo_id"]] = item
+    except Exception:
+        return {}
+    return LLM_PROFILE_CACHE
+
+
+def _is_vision_model(repo_id: str) -> bool:
+    profile = _load_llm_profiles().get(repo_id)
+    return bool(profile and profile.get("vision"))
+
+
+def _env_flag(name: str) -> bool:
+    value = str(os.environ.get(name, "")).strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+def _strip_thinking(text: str) -> str:
+    if not text:
+        return text
+    cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    cleaned = re.sub(r"</?think>", "", cleaned, flags=re.IGNORECASE)
+    return cleaned.strip()
 
 
 class VoicePipeline:
@@ -22,7 +70,7 @@ class VoicePipeline:
         stt_model=STT,
         llm_model=LLM,
         tts_ref_audio: str | None = None,
-        tts_backend: str = "chatterbox",
+        tts_backend: str = "qwen3-tts",
     ):
         self.silence_threshold = silence_threshold
         self.silence_duration = silence_duration
@@ -35,41 +83,144 @@ class VoicePipeline:
         self.llm_model = llm_model
         self.tts_ref_audio = tts_ref_audio
         self.tts_backend = tts_backend
+        self.llm_backend = "lm"
+        self.llm = None
+        self.tokenizer = None
 
         self.mlx_lock = asyncio.Lock()
 
     async def init_models(self):
-        self.llm, self.tokenizer = await asyncio.to_thread(
-            lambda: load_llm(self.llm_model)
+        self.llm, self.tokenizer, self.llm_backend = await self.load_llm_backend(
+            self.llm_model
         )
-        self.stt = Whisper.from_pretrained(self.stt_model_id)
+        self.stt = await asyncio.to_thread(lambda: load_stt(self.stt_model_id, strict=False))
         await self._init_tts()
 
-    async def _init_tts(self):
-        backend = (self.tts_backend or "").strip().lower() or "chatterbox"
-        if backend != "chatterbox":
-            backend = "chatterbox"
+    def _load_llm_backend_sync(self, model_repo: str):
+        if _is_vision_model(model_repo):
+            if load_vlm is None:
+                raise RuntimeError(
+                    "Model is marked vision=true in llms.json but mlx-vlm is unavailable. "
+                    "Install/update mlx-vlm in the backend environment."
+                )
 
-        self.tts = ChatterboxTTS(
-            model_id=TTS,
-            output_sample_rate=self.output_sample_rate,
-            stream=True,
-            streaming_interval=self.streaming_interval,
-        )
+            # Some VLM repos need trust_remote_code; try both paths for compatibility.
+            trust_remote_code = _env_flag("MLX_TRUST_REMOTE_CODE")
+            vlm_errors: list[str] = []
+            for trc in [trust_remote_code, True]:
+                try:
+                    llm, tokenizer = load_vlm(model_repo, trust_remote_code=trc)
+                    return llm, tokenizer, "vlm"
+                except TypeError:
+                    # Older mlx-vlm versions may not accept trust_remote_code.
+                    try:
+                        llm, tokenizer = load_vlm(model_repo)
+                        return llm, tokenizer, "vlm"
+                    except Exception as e:
+                        vlm_errors.append(str(e))
+                except Exception as e:
+                    vlm_errors.append(str(e))
+
+            # If model is marked vision but behaves like text-only, allow fallback.
+            try:
+                llm, tokenizer = load_llm(model_repo)
+                return llm, tokenizer, "lm"
+            except Exception as lm_error:
+                combined = "; ".join([err for err in vlm_errors if err]) or "unknown error"
+                raise RuntimeError(
+                    f"Failed to load vision model with mlx-vlm ({combined}) "
+                    f"and fallback mlx-lm also failed ({lm_error})."
+                ) from lm_error
+
+        llm, tokenizer = load_llm(model_repo)
+        return llm, tokenizer, "lm"
+
+    async def load_llm_backend(self, model_repo: str):
+        return await asyncio.to_thread(lambda: self._load_llm_backend_sync(model_repo))
+
+    async def _init_tts(self):
+        backend = self._normalize_tts_backend(self.tts_backend)
+        self.tts_backend = backend
+
+        if backend == "qwen3-tts":
+            self.tts = Qwen3TTS(
+                model_id=QWEN3_TTS,
+                output_sample_rate=self.output_sample_rate,
+                stream=True,
+                streaming_interval=self.streaming_interval,
+            )
+        else:
+            self.tts = ChatterboxTTS(
+                model_id=TTS,
+                output_sample_rate=self.output_sample_rate,
+                stream=True,
+                streaming_interval=self.streaming_interval,
+            )
 
         await asyncio.to_thread(self.tts.load)
 
+    @staticmethod
+    def _normalize_tts_backend(backend: str | None) -> str:
+        value = (backend or "").strip().lower()
+        if value in {"", "qwen3-tts", "qwen3_tts", "qwen3"}:
+            return "qwen3-tts"
+        if value in {"chatterbox", "chatterbox-turbo", "chatterbox_turbo"}:
+            return "chatterbox-turbo"
+        raise ValueError("tts_backend must be 'chatterbox-turbo' or 'qwen3-tts'")
+
     async def set_tts_backend(self, backend: str) -> str:
-        backend = (backend or "").strip().lower()
-        if backend != "chatterbox":
-            raise ValueError("tts_backend must be 'chatterbox'")
+        backend = self._normalize_tts_backend(backend)
 
         async with self.mlx_lock:
             self.tts_backend = backend
             await self._init_tts()
         return backend
 
+    def _messages_to_plain_prompt(
+        self, messages, add_generation_prompt: bool = True
+    ) -> str:
+        lines = []
+        for message in messages:
+            if not isinstance(message, dict):
+                continue
+            role = str(message.get("role", "user")).strip() or "user"
+            content = message.get("content", "")
+            if isinstance(content, list):
+                text_parts = [
+                    str(part.get("text", ""))
+                    for part in content
+                    if isinstance(part, dict) and part.get("type") == "text"
+                ]
+                content = " ".join(p for p in text_parts if p)
+            lines.append(f"{role}: {str(content).strip()}")
+        if add_generation_prompt:
+            lines.append("assistant:")
+        return "\n".join(lines).strip()
+
     def _apply_chat_template(self, messages, add_generation_prompt: bool, clear_thinking: bool | None):
+        if not hasattr(self.tokenizer, "apply_chat_template"):
+            return self._messages_to_plain_prompt(
+                messages, add_generation_prompt=add_generation_prompt
+            )
+        if self.llm_backend == "vlm":
+            # Force no-thinking mode for vision path.
+            try:
+                return self.tokenizer.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=add_generation_prompt,
+                    enable_thinking=False,
+                )
+            except TypeError:
+                try:
+                    return self.tokenizer.apply_chat_template(
+                        messages,
+                        tokenize=False,
+                        add_generation_prompt=add_generation_prompt,
+                        clear_thinking=True,
+                    )
+                except TypeError:
+                    pass
         try:
             if clear_thinking is None:
                 return self.tokenizer.apply_chat_template(
@@ -85,6 +236,41 @@ class VoicePipeline:
             return self.tokenizer.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=add_generation_prompt
             )
+
+    def _generate(self, prompt: str, max_tokens: int):
+        if self.llm_backend == "vlm":
+            if mx_vlm_generate is None:
+                raise RuntimeError("mlx-vlm generate is unavailable")
+            try:
+                response = mx_vlm_generate(
+                    self.llm,
+                    self.tokenizer,
+                    prompt=prompt,
+                    max_tokens=max_tokens,
+                    verbose=False,
+                    enable_thinking=False,
+                )
+            except TypeError:
+                response = mx_vlm_generate(
+                    self.llm,
+                    self.tokenizer,
+                    prompt,
+                    max_tokens=max_tokens,
+                    verbose=False,
+                    enable_thinking=False,
+                )
+            if isinstance(response, tuple):
+                response = response[0]
+            return _strip_thinking(str(response).strip())
+
+        response = mx_generate(
+            self.llm,
+            self.tokenizer,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            verbose=False,
+        )
+        return _strip_thinking(response.strip())
 
     async def generate_text_simple(
         self,
@@ -102,13 +288,7 @@ class VoicePipeline:
 
         async with self.mlx_lock:
             response = await asyncio.to_thread(
-                lambda: mx_generate(
-                    self.llm,
-                    self.tokenizer,
-                    prompt=formatted_prompt,
-                    max_tokens=max_tokens,
-                    verbose=False,
-                )
+                lambda: self._generate(formatted_prompt, max_tokens)
             )
         return response.strip()
 
@@ -145,13 +325,7 @@ class VoicePipeline:
 
         async with self.mlx_lock:
             response = await asyncio.to_thread(
-                lambda: mx_generate(
-                    self.llm,
-                    self.tokenizer,
-                    prompt=prompt,
-                    max_tokens=max_tokens,
-                    verbose=False,
-                )
+                lambda: self._generate(prompt, max_tokens)
             )
         return response.strip()
 
@@ -163,13 +337,18 @@ class VoicePipeline:
     ):
         audio_queue = asyncio.Queue()
         loop = asyncio.get_running_loop()
+        stream_error: list[Exception] = []
 
         def _tts_stream():
-            for audio_bytes in self.tts.generate(text, ref_audio_path=ref_audio_path):
-                if cancel_event and cancel_event.is_set():
-                    break
-                loop.call_soon_threadsafe(audio_queue.put_nowait, audio_bytes)
-            loop.call_soon_threadsafe(audio_queue.put_nowait, None)
+            try:
+                for audio_bytes in self.tts.generate(text, ref_audio_path=ref_audio_path):
+                    if cancel_event and cancel_event.is_set():
+                        break
+                    loop.call_soon_threadsafe(audio_queue.put_nowait, audio_bytes)
+            except Exception as e:
+                stream_error.append(e)
+            finally:
+                loop.call_soon_threadsafe(audio_queue.put_nowait, None)
 
         async with self.mlx_lock:
             tts_task = asyncio.create_task(asyncio.to_thread(_tts_stream))
@@ -183,3 +362,5 @@ class VoicePipeline:
                     yield chunk
             finally:
                 await tts_task
+                if stream_error:
+                    raise RuntimeError(f"TTS generation failed: {stream_error[0]}")

@@ -11,12 +11,18 @@ type ModelConfig = {
     file: string | null;
     loaded: boolean;
   };
+  tts: {
+    backend: string;
+    loaded: boolean;
+  };
 };
 
 export const Settings = () => {
   const [models, setModels] = useState<ModelConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [llmRepo, setLlmRepo] = useState('');
+  const [ttsBackend, setTtsBackend] = useState<'chatterbox-turbo' | 'qwen3-tts'>('qwen3-tts');
+  const [savingTts, setSavingTts] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ports, setPorts] = useState<string[]>([]);
   const [selectedPort, setSelectedPort] = useState<string>('');
@@ -93,6 +99,9 @@ export const Settings = () => {
       ]);
       setModels(modelData);
       setLlmRepo(modelData.llm.repo);
+      const normalizedTts =
+        modelData?.tts?.backend === 'chatterbox-turbo' ? 'chatterbox-turbo' : 'qwen3-tts';
+      setTtsBackend(normalizedTts);
       const raw = (volSetting as any)?.value;
       const parsed = raw != null ? Number(raw) : 70;
       setLaptopVolume(Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : 70);
@@ -117,6 +126,19 @@ export const Settings = () => {
     setSwitchError(undefined);
     
     await performModelSwitch(llmRepo);
+  };
+
+  const handleSaveTts = async () => {
+    try {
+      setSavingTts(true);
+      await api.setSetting('tts_backend', ttsBackend);
+      await loadSettings();
+    } catch (e) {
+      console.error('Failed to set TTS backend:', e);
+      setError('Failed to update TTS backend.');
+    } finally {
+      setSavingTts(false);
+    }
   };
 
   const performModelSwitch = async (modelRepo: string) => {
@@ -217,6 +239,42 @@ export const Settings = () => {
               )}
             </p>
           
+        </div>
+
+        <div className="pt-8 border-t border-gray-200 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 mb-2">
+              <Brain className="w-5 h-5" />
+              <h3 className="font-bold uppercase text-lg">TTS Backend</h3>
+            </div>
+            <button
+              onClick={handleSaveTts}
+              disabled={savingTts || loading || ttsBackend === (models?.tts?.backend === 'chatterbox-turbo' ? 'chatterbox-turbo' : 'qwen3-tts')}
+              className="retro-btn retro-btn-outline text-gray-900 disabled:opacity-50 flex items-center gap-2"
+            >
+              <Rss className="w-4 h-4" />
+              Update
+            </button>
+          </div>
+          <label className="font-bold mb-2 uppercase text-xs opacity-40">
+            TTS Engine
+          </label>
+          <select
+            className="retro-input bg-white border border-gray-200 w-full"
+            value={ttsBackend}
+            onChange={(e) => setTtsBackend((e.target.value as 'chatterbox-turbo' | 'qwen3-tts'))}
+            disabled={savingTts || loading}
+          >
+            <option value="chatterbox-turbo">Chatterbox Turbo</option>
+            <option value="qwen3-tts">Qwen3-TTS</option>
+          </select>
+          <p className="text-[10px] mt-2 opacity-60">
+            {models?.tts?.loaded ? (
+              <span className="text-green-600 font-bold">● TTS Loaded</span>
+            ) : (
+              <span className="text-red-500 font-bold">● TTS Not Loaded</span>
+            )}
+          </p>
         </div>
 
         <div className="pt-8 border-t border-gray-200">

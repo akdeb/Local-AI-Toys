@@ -1,7 +1,9 @@
 import numpy as np
 from typing import Generator, Optional
+from pathlib import Path
 
-
+import mlx.core as mx
+import soundfile as sf
 from mlx_audio.tts.utils import load_model as load_tts
 
 class ChatterboxTTS:
@@ -109,72 +111,118 @@ class Qwen3TTS:
         self.streaming_interval = streaming_interval
 
         self.model = None
-        self.ref_audio = None
-
-    @staticmethod
-    def _read_wav_mono_float32(path: str) -> tuple[np.ndarray, int]:
-        with wave.open(path, "rb") as wf:
-            channels = int(wf.getnchannels())
-            sample_width = int(wf.getsampwidth())
-            sample_rate = int(wf.getframerate())
-            frames = int(wf.getnframes())
-            raw = wf.readframes(frames)
-
-        if sample_width != 2:
-            raise ValueError("Only 16-bit PCM WAV reference audio is supported")
-
-        audio = np.frombuffer(raw, dtype=np.int16)
-        if channels == 2:
-            audio = audio.reshape(-1, 2).mean(axis=1).astype(np.int16)
-        elif channels != 1:
-            raise ValueError("Only mono/stereo WAV reference audio is supported")
-
-        audio_f32 = audio.astype(np.float32) / 32768.0
-        return audio_f32, sample_rate
+        self._cached_ref_path: Optional[str] = None
+        self._cached_ref_audio = None
+        self.ref_text_map = {
+            "santa.wav": (
+                "Ho ho ho! Your toy is awake, the AI elves are working locally, and Santa's "
+                "workshop is officially running on localhost."
+            ),
+            "narrator1.wav": (
+                "When the day feels heavy, remember this: You are not behind. Life unfolds in "
+                "its own time, like seasons changing. Be gentle with yourself today."
+            ),
+            "aussie.wav": (
+                "Crikey! Would you look at this beauty right here? Absolutely magnificent. "
+                "Now I'm gonna get nice and close, but very gentle, very respectful. She's not "
+                "aggressive, just misunderstood."
+            ),
+        }
 
     def load(self) -> None:
-        self.model = load_tts(self.model_id)
-        self.output_sample_rate = int(getattr(self.model, "sample_rate", self.output_sample_rate))
+        last_err = None
+        for repo in (self.model_id, "Qwen/Qwen3-TTS-12Hz-0.6B-Base"):
+            try:
+                self.model = load_tts(repo)
+                self.model_id = repo
+                break
+            except Exception as e:
+                last_err = e
+        if not self.model:
+            raise RuntimeError(f"Failed to load Qwen3-TTS model: {last_err}")
 
-        if self.ref_audio_path:
-            self.prepare_ref_audio(self.ref_audio_path)
+        self.output_sample_rate = int(
+            getattr(self.model, "sample_rate", self.output_sample_rate)
+        )
 
     def prepare_ref_audio(self, ref_audio_path: Optional[str]) -> None:
+        self.ref_audio_path = ref_audio_path or None
+        if self.ref_audio_path != self._cached_ref_path:
+            self._cached_ref_path = None
+            self._cached_ref_audio = None
+
+    def _load_ref_audio(self, ref_audio_path: str):
+        if self._cached_ref_path == ref_audio_path and self._cached_ref_audio is not None:
+            return self._cached_ref_audio
+
+        audio, sample_rate = sf.read(ref_audio_path, always_2d=False, dtype="float32")
+        if audio.ndim > 1:
+            audio = audio.mean(axis=1)
+
+        target_sr = int(getattr(self.model, "sample_rate", self.output_sample_rate))
+        if sample_rate != target_sr:
+            try:
+                import librosa
+
+                audio = librosa.resample(audio, orig_sr=sample_rate, target_sr=target_sr)
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to resample ref audio from {sample_rate}Hz to {target_sr}Hz: {e}"
+                ) from e
+
+        ref_audio = mx.array(np.asarray(audio, dtype=np.float32))
+        self._cached_ref_path = ref_audio_path
+        self._cached_ref_audio = ref_audio
+        return ref_audio
+
+    def _resolve_ref_text(self, ref_audio_path: Optional[str]) -> Optional[str]:
+        if not ref_audio_path:
+            return None
+        p = Path(ref_audio_path)
+        mapped = self.ref_text_map.get(p.name.lower())
+        if mapped:
+            return mapped
+
+        # Optional sidecar transcript: same filename with .txt extension
+        sidecar = p.with_suffix(".txt")
+        try:
+            if sidecar.exists() and sidecar.is_file():
+                text = sidecar.read_text(encoding="utf-8").strip()
+                if text:
+                    return text
+        except Exception:
+            pass
+        return None
+
+    def generate(
+        self,
+        text: str,
+        ref_audio_path: Optional[str] = None,
+        ref_text: Optional[str] = None,
+    ) -> Generator[bytes, None, None]:
         if not self.model:
             raise RuntimeError("TTS model not loaded")
 
-        if ref_audio_path:
-            audio_f32, sr = self._read_wav_mono_float32(ref_audio_path)
-            if sr != 24_000:
-                raise ValueError("Qwen3-TTS reference audio must be 24kHz")
-            self.ref_audio = mx.array(audio_f32)
-            self.ref_audio_path = ref_audio_path
-        else:
-            self.ref_audio = None
-            self.ref_audio_path = None
-
-    def generate(self, text: str, ref_audio_path: Optional[str] = None) -> Generator[bytes, None, None]:
-        if not self.model:
-            raise RuntimeError("TTS model not loaded")
-
-        if ref_audio_path is not None and ref_audio_path != self.ref_audio_path:
+        if ref_audio_path is not None:
             self.prepare_ref_audio(ref_audio_path)
 
-        for result in self.model.generate(
-            text,
+        use_ref_audio = self.ref_audio_path
+        use_ref_text = ref_text or self._resolve_ref_text(use_ref_audio)
+        gen_kwargs = dict(
             temperature=self.temperature,
             top_k=self.top_k,
             top_p=self.top_p,
             repetition_penalty=self.repetition_penalty,
             stream=self.stream,
             streaming_interval=self.streaming_interval,
-            ref_audio=self.ref_audio,
-        ):
+        )
+        if use_ref_audio and use_ref_text:
+            gen_kwargs["ref_audio"] = self._load_ref_audio(use_ref_audio)
+            gen_kwargs["ref_text"] = use_ref_text
+
+        for result in self.model.generate(text, **gen_kwargs):
             audio = getattr(result, "audio", result)
-            if hasattr(audio, "tolist") and not isinstance(audio, np.ndarray):
-                audio_np = np.asarray(audio, dtype=np.float32)
-            else:
-                audio_np = np.asarray(audio, dtype=np.float32)
+            audio_np = np.asarray(audio, dtype=np.float32)
 
             audio_np = np.clip(audio_np, -1.0, 1.0)
             audio_int16 = (audio_np * 32767.0).astype(np.int16)
@@ -190,5 +238,3 @@ class Qwen3TTS:
     @property
     def sample_rate(self) -> int:
         return self.output_sample_rate
-
-
