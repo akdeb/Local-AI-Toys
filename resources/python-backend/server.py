@@ -9,7 +9,7 @@ import socket
 import time
 import sys
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Dict, List, Optional
 import re
@@ -192,6 +192,10 @@ async def lifespan(app: FastAPI):
     if not hasattr(app.state, "output_sample_rate"):
         app.state.output_sample_rate = 24_000
     
+    safe_streaming_interval = float(app.state.streaming_interval)
+    if safe_streaming_interval < 1.2:
+        safe_streaming_interval = 1.2
+
     pipeline = VoicePipeline(
         stt_model=app.state.stt_model,
         llm_model=app.state.llm_model,
@@ -200,7 +204,7 @@ async def lifespan(app: FastAPI):
         tts_backend=app.state.tts_backend,
         silence_threshold=app.state.silence_threshold,
         silence_duration=app.state.silence_duration,
-        streaming_interval=app.state.streaming_interval,
+        streaming_interval=safe_streaming_interval,
         output_sample_rate=app.state.output_sample_rate,
     )
     await pipeline.init_models()
@@ -1412,13 +1416,24 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
                     "Offer a gentle hint after Question 10 or if the user asks for a hint."
                 )
         elif experience_type == "story":
-            behavior_constraints += (
-                " You are a bedtime-style storyteller for young kids. "
-                "Tell the story yourself without asking questions or waiting for input. "
-                "Do NOT ask the user to pick a setting, name, or choice; you decide and continue. "
-                "If the user says hi/hello/hey/start/ready or gives unclear input, gently keep the story going. "
-                "Keep sentences short, warm, and simple. Avoid scary or complex themes."
-            )
+            if _is_bedtime_story_mode():
+                behavior_constraints += (
+                    " You are in bedtime mode. You are the story director agent responsible for "
+                    "plot planning, pacing, and chapter transitions in a single continuous bedtime story. "
+                    "Do not ask questions, do not pause for choices, and do not wait for user input. "
+                    "Keep the narrative flowing gently on your own with soothing sleepy pacing. "
+                    "Each continuation should feel like the next chapter of the same story world. "
+                    "Make it fun for kids: add one playful discovery or tiny wonder in each chapter. "
+                    "Never repeat previous lines verbatim. Keep variety in imagery and actions. "
+                    "Keep sentences short, warm, and simple. Avoid scary or complex themes."
+                )
+            else:
+                behavior_constraints += (
+                    " You are an interactive choose-your-adventure storyteller for kids. "
+                    "After a short scene, offer exactly two clear choices and then wait for the user's decision. "
+                    "Keep the story coherent, playful, and safe. "
+                    "Keep sentences short, warm, and simple. Avoid scary or complex themes."
+                )
 
         if thinking_model:
             behavior_constraints += " Do not output <think> or reasoning text. Respond with the final answer only."
@@ -1473,6 +1488,24 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
             pass
     
     logger.info(f"{client_label} Client connected, session={session_id}")
+
+    def _is_bedtime_story_mode() -> bool:
+        try:
+            mode = (db_service.db_service.get_app_mode() or "").strip().lower()
+        except Exception:
+            mode = "story"
+        experience_type = getattr(personality, "type", "personality") if personality else "personality"
+        return mode == "bedtime" and experience_type == "story"
+
+    def _get_bedtime_auto_chapters() -> int:
+        try:
+            raw = db_service.db_service.get_setting("bedtime_auto_chapters")
+            if raw is not None:
+                n = int(str(raw).strip())
+                return max(1, min(8, n))
+        except Exception:
+            pass
+        return 3
     
     # Generate and send initial greeting (speak first, then listen)
     cancel_event = asyncio.Event()
@@ -1484,10 +1517,16 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
                 "and immediately start the game with the first move. Do NOT ask if they are ready."
             )
         elif experience_type == "story":
-            greeting_user_text = (
-                "[System] The user just connected. Start the story immediately with a warm, kid-friendly opening. "
-                "Use 1-2 short sentences and end with a full stop. Do NOT ask a question or wait for input."
-            )
+            if _is_bedtime_story_mode():
+                greeting_user_text = (
+                    "[System] The user just connected in bedtime mode. Start a calm bedtime story immediately. "
+                    "Use 2-3 short soothing sentences. Do not ask questions or wait for input."
+                )
+            else:
+                greeting_user_text = (
+                    "[System] The user just connected. Start a choose-your-adventure story immediately. "
+                    "Use 1-2 short opening sentences and end with exactly two choices."
+                )
         else:
             greeting_user_text = "[System] The user just connected. Greet them with a short friendly sentence (under 8 words)."
         greeting_messages = _build_llm_context(greeting_user_text)
@@ -1593,6 +1632,8 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
     ws_open = True
     session_system_prompt = None
     session_voice = "dave"
+    bedtime_sequence_task = None
+    bedtime_disconnect_task = None
 
     # VAD setup for ESP32
     if is_esp32:
@@ -1608,6 +1649,188 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
     # Desktop prebuffer settings
     PREBUFFER_MS = 300
     PREBUFFER_BYTES = int(pipeline.output_sample_rate * (PREBUFFER_MS / 1000.0) * 2)
+
+    async def _emit_ai_turn(ai_text: str, for_esp32: bool):
+        if not ai_text or cancel_event.is_set() or not ws_open:
+            return
+        if for_esp32:
+            try:
+                await websocket.send_json(
+                    {"type": "server", "msg": "RESPONSE.CREATED", "volume_control": volume}
+                )
+            except Exception:
+                cancel_event.set()
+                return
+
+            opus_packets = []
+            opus = create_opus_packetizer(lambda pkt: opus_packets.append(pkt))
+            active_voice_id = getattr(personality, "voice_id", None)
+            ref_audio_path = resolve_voice_ref_audio_path(active_voice_id)
+            ref_text = resolve_voice_ref_text(active_voice_id)
+            async for audio_chunk in pipeline.synthesize_speech(
+                ai_text,
+                cancel_event,
+                ref_audio_path=ref_audio_path,
+                ref_text=ref_text,
+            ):
+                if cancel_event.is_set() or not ws_open:
+                    break
+                chunk_mutable = bytearray(audio_chunk)
+                utils.boost_limit_pcm16le_in_place(
+                    chunk_mutable, gain_db=GAIN_DB, ceiling=CEILING
+                )
+                opus.push(chunk_mutable)
+                while opus_packets:
+                    try:
+                        await websocket.send_bytes(opus_packets.pop(0))
+                    except Exception:
+                        cancel_event.set()
+                        break
+            opus.flush(pad_final_frame=True)
+            while opus_packets:
+                try:
+                    await websocket.send_bytes(opus_packets.pop(0))
+                except Exception:
+                    break
+            opus.close()
+            try:
+                await websocket.send_json({"type": "server", "msg": "RESPONSE.COMPLETE"})
+            except Exception:
+                pass
+            return
+
+        try:
+            await websocket.send_text(json.dumps({"type": "response", "text": ai_text}))
+        except Exception:
+            cancel_event.set()
+            return
+
+        active_voice_id = getattr(personality, "voice_id", None)
+        ref_audio_path = resolve_voice_ref_audio_path(active_voice_id)
+        ref_text = resolve_voice_ref_text(active_voice_id)
+        async for audio_chunk in pipeline.synthesize_speech(
+            ai_text,
+            cancel_event,
+            ref_audio_path=ref_audio_path,
+            ref_text=ref_text,
+        ):
+            if cancel_event.is_set() or not ws_open:
+                break
+            try:
+                await websocket.send_text(
+                    json.dumps(
+                        {
+                            "type": "audio",
+                            "data": base64.b64encode(audio_chunk).decode("utf-8"),
+                        }
+                    )
+                )
+            except Exception:
+                cancel_event.set()
+                break
+        try:
+            await websocket.send_text(json.dumps({"type": "audio_end"}))
+        except Exception:
+            pass
+
+    async def _run_bedtime_autoplay(for_esp32: bool):
+        """Hard non-interactive bedtime flow: no mic input, fixed chapter progression."""
+        allow_paralinguistic = (
+            _normalize_tts_backend(getattr(pipeline, "tts_backend", None))
+            == "chatterbox-turbo"
+        )
+        bedtime_prompts = ["CONTINUE THE STORY"] * 9 + ["END THE STORY"]
+
+        if not for_esp32:
+            try:
+                await websocket.send_text(
+                    json.dumps({"type": "bedtime_mode", "mic_enabled": False})
+                )
+            except Exception:
+                pass
+
+        async def _sequence():
+            for idx, auto_step in enumerate(bedtime_prompts, start=1):
+                if cancel_event.is_set() or not ws_open:
+                    break
+                is_final = auto_step == "END THE STORY"
+                if not is_final:
+                    auto_prompt = (
+                        f"[System] CONTINUE THE STORY. Chapter {idx}/10. "
+                        "Keep the same world and characters and move the plot forward. "
+                        "Make this chapter interesting for kids with exactly one playful event, "
+                        "one magical sensory detail, and one comforting moment. "
+                        "No questions and no choices. "
+                        "Do not repeat prior lines verbatim or restate the opening scene. "
+                        "Keep to 5-7 short sentences."
+                    )
+                else:
+                    auto_prompt = (
+                        "[System] END THE STORY. Chapter 10/10. "
+                        "Give a gentle satisfying ending with calm closure and sleep cues. "
+                        "No questions and no choices. Keep to 4-6 short sentences."
+                    )
+                try:
+                    db_service.db_service.log_conversation(
+                        role="user",
+                        transcript=f"[auto-bedtime] step {idx}: {auto_prompt}",
+                        session_id=session_id,
+                    )
+                except Exception:
+                    pass
+
+                llm_messages = _build_llm_context(auto_prompt)
+                ai_text = await pipeline.generate_response(
+                    auto_prompt,
+                    messages=llm_messages,
+                    max_tokens=140,
+                    clear_thinking=True if thinking_model else None,
+                )
+                if thinking_model:
+                    ai_text = _strip_thinking(ai_text)
+                ai_text = sanitize_spoken_text(
+                    ai_text, allow_paralinguistic=allow_paralinguistic
+                ).strip()
+                if not ai_text:
+                    continue
+                logger.info(
+                    f"{client_label} Bedtime auto step {idx}/{len(bedtime_prompts)}: {ai_text}"
+                )
+                await _emit_ai_turn(ai_text, for_esp32=for_esp32)
+                try:
+                    db_service.db_service.log_conversation(
+                        role="ai", transcript=ai_text, session_id=session_id
+                    )
+                except Exception:
+                    pass
+
+        try:
+            await asyncio.wait_for(_sequence(), timeout=600.0)
+        except asyncio.TimeoutError:
+            timeout_text = (
+                "The stars are dim now, and the story is ready to sleep. Goodnight."
+            )
+            await _emit_ai_turn(timeout_text, for_esp32=for_esp32)
+            try:
+                db_service.db_service.log_conversation(
+                    role="ai", transcript=timeout_text, session_id=session_id
+                )
+            except Exception:
+                pass
+        finally:
+            if ws_open:
+                with suppress(Exception):
+                    await websocket.close(code=1000)
+
+    async def _wait_for_bedtime_disconnect():
+        while not cancel_event.is_set():
+            try:
+                msg = await websocket.receive()
+            except Exception:
+                break
+            if msg.get("type") == "websocket.disconnect":
+                break
+        cancel_event.set()
 
     async def process_transcription_and_respond(transcription: str, for_esp32: bool):
         """Common logic for processing transcription and generating response."""
@@ -1718,6 +1941,8 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
                         ).strip()
                         if chunk:
                             await text_queue.put(chunk)
+            except asyncio.CancelledError:
+                return
             except Exception as e:
                 llm_error.append(e)
             finally:
@@ -1728,8 +1953,10 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
                             chunk, allow_paralinguistic=allow_paralinguistic
                         ).strip()
                         if chunk:
-                            await text_queue.put(chunk)
-                await text_queue.put(None)
+                            with suppress(asyncio.QueueFull):
+                                text_queue.put_nowait(chunk)
+                with suppress(asyncio.QueueFull):
+                    text_queue.put_nowait(None)
 
         producer_task = asyncio.create_task(_llm_producer())
 
@@ -1764,7 +1991,11 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
                 logger.error(f"{client_label} TTS stream error (esp32): {e}")
                 cancel_event.set()
             finally:
-                await producer_task
+                cancel_event.set()
+                if producer_task and not producer_task.done():
+                    producer_task.cancel()
+                with suppress(Exception):
+                    await producer_task
                 opus.flush(pad_final_frame=True)
                 while opus_packets:
                     try:
@@ -1808,6 +2039,7 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
                                     )
                                 )
                             except Exception:
+                                cancel_event.set()
                                 break
                             buffered.clear()
                             started = True
@@ -1822,12 +2054,17 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
                                     )
                                 )
                             except Exception:
+                                cancel_event.set()
                                 break
             except Exception as e:
                 logger.error(f"{client_label} TTS stream error (desktop): {e}")
                 cancel_event.set()
             finally:
-                await producer_task
+                cancel_event.set()
+                if producer_task and not producer_task.done():
+                    producer_task.cancel()
+                with suppress(Exception):
+                    await producer_task
                 if buffered:
                     try:
                         await websocket.send_text(
@@ -1867,6 +2104,142 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
             )
         except Exception as e:
             logger.error(f"Failed to log AI conversation: {e}")
+
+        if _is_bedtime_story_mode():
+            chapter_count = _get_bedtime_auto_chapters()
+            if chapter_count > 1:
+                for chapter_idx in range(2, chapter_count + 1):
+                    if cancel_event.is_set() or not ws_open:
+                        break
+
+                    chapter_prompt = (
+                        f"[System] Continue with next chapter ({chapter_idx}/{chapter_count}) "
+                        "of the same bedtime story. Keep continuity with earlier events. "
+                        "No questions, no choices, no interruptions. End softly."
+                    )
+                    chapter_messages = _build_llm_context(chapter_prompt)
+                    chapter_text = await pipeline.generate_response(
+                        chapter_prompt,
+                        messages=chapter_messages,
+                        max_tokens=260,
+                        clear_thinking=True if thinking_model else None,
+                    )
+                    chapter_text = sanitize_spoken_text(
+                        chapter_text, allow_paralinguistic=allow_paralinguistic
+                    ).strip()
+                    if not chapter_text:
+                        break
+
+                    logger.info(
+                        f"{client_label} Bedtime chapter {chapter_idx}/{chapter_count}: {chapter_text}"
+                    )
+
+                    if for_esp32:
+                        try:
+                            await websocket.send_json(
+                                {
+                                    "type": "server",
+                                    "msg": "RESPONSE.CREATED",
+                                    "volume_control": volume,
+                                }
+                            )
+                        except Exception:
+                            break
+
+                        opus_packets = []
+                        opus = create_opus_packetizer(lambda pkt: opus_packets.append(pkt))
+                        async for audio_chunk in pipeline.synthesize_speech(
+                            chapter_text,
+                            cancel_event,
+                            ref_audio_path=ref_audio_path,
+                            ref_text=ref_text,
+                        ):
+                            if cancel_event.is_set() or not ws_open:
+                                break
+                            chunk_mutable = bytearray(audio_chunk)
+                            utils.boost_limit_pcm16le_in_place(
+                                chunk_mutable, gain_db=GAIN_DB, ceiling=CEILING
+                            )
+                            opus.push(chunk_mutable)
+                            while opus_packets:
+                                try:
+                                    await websocket.send_bytes(opus_packets.pop(0))
+                                except Exception:
+                                    cancel_event.set()
+                                    break
+
+                        opus.flush(pad_final_frame=True)
+                        while opus_packets:
+                            try:
+                                await websocket.send_bytes(opus_packets.pop(0))
+                            except Exception:
+                                break
+                        opus.close()
+                        try:
+                            await websocket.send_json(
+                                {"type": "server", "msg": "RESPONSE.COMPLETE"}
+                            )
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            await websocket.send_text(
+                                json.dumps({"type": "response", "text": chapter_text})
+                            )
+                        except Exception:
+                            break
+                        async for audio_chunk in pipeline.synthesize_speech(
+                            chapter_text,
+                            cancel_event,
+                            ref_audio_path=ref_audio_path,
+                            ref_text=ref_text,
+                        ):
+                            if cancel_event.is_set() or not ws_open:
+                                break
+                            try:
+                                await websocket.send_text(
+                                    json.dumps(
+                                        {
+                                            "type": "audio",
+                                            "data": base64.b64encode(audio_chunk).decode(
+                                                "utf-8"
+                                            ),
+                                        }
+                                    )
+                                )
+                            except Exception:
+                                cancel_event.set()
+                                break
+                        try:
+                            await websocket.send_text(json.dumps({"type": "audio_end"}))
+                        except Exception:
+                            pass
+
+                    try:
+                        db_service.db_service.log_conversation(
+                            role="ai", transcript=chapter_text, session_id=session_id
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to log bedtime chapter AI conversation: {e}")
+
+    if _is_bedtime_story_mode():
+        bedtime_sequence_task = asyncio.create_task(
+            _run_bedtime_autoplay(for_esp32=is_esp32)
+        )
+        bedtime_disconnect_task = asyncio.create_task(_wait_for_bedtime_disconnect())
+        done, pending = await asyncio.wait(
+            {bedtime_sequence_task, bedtime_disconnect_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        cancel_event.set()
+        for task in pending:
+            task.cancel()
+            with suppress(Exception):
+                await task
+        for task in done:
+            with suppress(Exception):
+                await task
+        return
 
     try:
         while True:
@@ -1930,9 +2303,10 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
                                 await process_transcription_and_respond(transcription, for_esp32=True)
                             elif msg == "INTERRUPT":
                                 # Cancel current TTS
-                                cancel_event.set()
-                                speech_frames = []
-                                audio_buffer.clear()
+                                if not _is_bedtime_story_mode():
+                                    cancel_event.set()
+                                    speech_frames = []
+                                    audio_buffer.clear()
                         
                         if "system_prompt" in data:
                             session_system_prompt = data["system_prompt"]
@@ -1955,7 +2329,7 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
                             audio_buffer.extend(audio_data)
 
                             # If user is speaking while we're TTS-ing, cancel current TTS
-                            if current_tts_task and not current_tts_task.done():
+                            if current_tts_task and not current_tts_task.done() and not _is_bedtime_story_mode():
                                 cancel_event.set()
                                 try:
                                     await current_tts_task
@@ -1974,6 +2348,8 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
                                     async def _run_response(text: str):
                                         try:
                                             await process_transcription_and_respond(text, for_esp32=False)
+                                        except asyncio.CancelledError:
+                                            return
                                         except Exception as e:
                                             logger.error(f"{client_label} Response task error: {e}")
                                             import traceback
@@ -1982,7 +2358,7 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
                                     current_tts_task = asyncio.create_task(_run_response(transcription))
                         
                         elif msg_type == "cancel":
-                            if current_tts_task and not current_tts_task.done():
+                            if current_tts_task and not current_tts_task.done() and not _is_bedtime_story_mode():
                                 cancel_event.set()
                             audio_buffer.clear()
                     except Exception as e:
@@ -1994,9 +2370,20 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
         logger.error(f"{client_label} WebSocket error: {e}")
     finally:
         ws_open = False
+        if bedtime_sequence_task and not bedtime_sequence_task.done():
+            cancel_event.set()
+            bedtime_sequence_task.cancel()
+            with suppress(Exception):
+                await bedtime_sequence_task
+        if bedtime_disconnect_task and not bedtime_disconnect_task.done():
+            bedtime_disconnect_task.cancel()
+            with suppress(Exception):
+                await bedtime_disconnect_task
         if current_tts_task and not current_tts_task.done():
             cancel_event.set()
             current_tts_task.cancel()
+            with suppress(Exception):
+                await current_tts_task
         if is_esp32:
             try:
                 status = db_service.db_service.update_esp32_device(
@@ -2063,7 +2450,7 @@ def main():
         "--silence_threshold", type=float, default=0.03, help="Silence threshold"
     )
     parser.add_argument(
-        "--streaming_interval", type=int, default=3, help="Streaming interval"
+        "--streaming_interval", type=float, default=3, help="Streaming interval"
     )
     parser.add_argument(
         "--output_sample_rate",

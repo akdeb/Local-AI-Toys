@@ -136,32 +136,34 @@ export const TestPage = () => {
 
   const micStatusLabel = useMemo(() => {
     if (viewOnly) return null;
+    if (voiceWs.isBedtimeMode) return "bedtime story";
     if (voiceWs.isSpeaking) return "speaking";
     if (!voiceWs.isRecording) return voiceWs.status === "connected" ? "waiting" : null;
     if (voiceWs.isPaused) return "processing";
     return "listening";
-  }, [voiceWs.isRecording, voiceWs.isPaused, voiceWs.isSpeaking, voiceWs.status, viewOnly]);
+  }, [voiceWs.isBedtimeMode, voiceWs.isRecording, voiceWs.isPaused, voiceWs.isSpeaking, voiceWs.status, viewOnly]);
 
   const orbScale = useMemo(() => {
     if (viewOnly) return 1;
+    if (voiceWs.isBedtimeMode) return voiceWs.isSpeaking ? 1.06 : 1;
     const base = voiceWs.isRecording ? 1.03 : 1;
     const mic = voiceWs.isRecording && !voiceWs.isPaused ? voiceWs.micLevel * 0.18 : 0;
     const speak = voiceWs.isSpeaking ? 0.08 : 0;
     return base + mic + speak;
-  }, [voiceWs.isRecording, voiceWs.isPaused, voiceWs.micLevel, voiceWs.isSpeaking, viewOnly]);
+  }, [voiceWs.isBedtimeMode, voiceWs.isRecording, voiceWs.isPaused, voiceWs.micLevel, voiceWs.isSpeaking, viewOnly]);
 
   const displayTranscript = viewOnly ? deviceTranscript : voiceWs.transcript;
 
   return (
-    <div className="-mt-8">
-      <div className="sticky top-0 z-30 bg-white border-b border-gray-100 px-8 pt-8 pb-4">
-        <div className="flex justify-between items-start gap-6">
+    <div className="live-page -mt-8">
+      <div className="sticky top-0 z-30 pt-6 pb-4">
+        <div className="live-header-surface flex justify-between items-start gap-6 rounded-[28px] border border-gray-200 bg-white px-6 py-6 shadow-[0_12px_30px_rgba(0,0,0,0.08)]">
           <div>
-            <h2 className="text-3xl font-black">LIVE</h2>
-            <div className="mt-2 font-mono text-xs text-gray-600">
+            <h2 className="text-3xl font-black live-title">LIVE</h2>
+            <div className="mt-2 font-mono text-xs text-gray-600 live-meta">
               Character: <span className="font-bold text-black">{voiceWs.characterName}</span>
             </div>
-            <div className="mt-1 font-mono text-xs text-gray-600 inline-flex items-center gap-2">
+            <div className="mt-1 font-mono text-xs text-gray-600 inline-flex items-center gap-2 live-meta">
               <span className={`w-2.5 h-2.5 rounded-full border border-black ${statusDotClass}`} />
               <span className="capitalize">{effectiveStatus}</span>
               {micStatusLabel && (
@@ -191,7 +193,7 @@ export const TestPage = () => {
                 <img
                   src={voiceWs.characterImageSrc}
                   alt=""
-                  className="w-full h-full rounded-full border-2 border-black object-cover bg-white"
+                  className="w-full h-full rounded-full border-2 border-black object-cover bg-white live-orb-image"
                   onError={() => setImageError(true)}
                 />
               ) : (
@@ -209,8 +211,13 @@ export const TestPage = () => {
         </div>
       </div>
 
-      <div className="space-y-3 pt-6">
-        <ChatTranscript messages={displayTranscript} isLive autoScroll scrollMarginTop={200} />
+      <div className="space-y-3 pt-6 pb-4">
+        <ChatTranscript
+          messages={displayTranscript}
+          isLive
+          autoScroll
+          scrollMarginTop={200}
+        />
       </div>
     </div>
   );

@@ -23,7 +23,7 @@ class ChatterboxTTS:
         top_p: float = 0.95,
         repetition_penalty: float = 1.2,
         stream: bool = False,
-        streaming_interval: float = 1.5,
+        streaming_interval: float = 3,
     ):
         self.model_id = model_id
         self.ref_audio_path = ref_audio_path

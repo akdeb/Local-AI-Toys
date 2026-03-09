@@ -184,73 +184,69 @@ export const Settings = () => {
   };
 
   return (
-    <div>
-      <h2 className="text-3xl font-black mb-8 flex items-center gap-3">
+    <div className="settings-page space-y-6">
+      <h2 className="text-3xl font-black flex items-center gap-3 settings-title">
         SETTINGS
       </h2>
       
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 font-bold rounded-[12px]">
+        <div className="p-4 bg-red-50 border border-red-200 text-red-700 font-bold rounded-[12px]">
           {error}
         </div>
       )}
       
-      <div className="retro-card space-y-8 border border-gray-200 shadow-[0_12px_28px_rgba(0,0,0,0.06)]">
+      <div className="retro-card settings-shell space-y-8 border border-gray-200 shadow-[0_12px_28px_rgba(0,0,0,0.06)]">
         
         {/* LLM Section */}
-        <div className="space-y-4">
-          <div className="flex flex-col relative">
-<div className="flex items-center justify-between">
-<div className="flex items-center gap-2 mb-2">
-            <Brain className="w-5 h-5" />
-            <h3 className="font-bold uppercase text-lg">Language Model (LLM)</h3>
+        <div className="settings-section space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <Brain className="w-5 h-5" />
+              <h3 className="font-bold uppercase text-lg">Language Model (LLM)</h3>
             </div>
-<button 
-                onClick={handleSaveModel}
-                disabled={showSwitchModal || loading || !llmRepo || llmRepo === models?.llm.repo}
-                className="absolute top-0 right-0 retro-btn retro-btn-outline text-gray-900 disabled:opacity-50 flex items-center gap-2"
-              >
-                <Rss className="w-4 h-4" />
-                Update
-              </button>
-</div>
-            
-            <label className="font-bold mb-2 uppercase text-xs opacity-40">
+            <button
+              onClick={handleSaveModel}
+              disabled={showSwitchModal || loading || !llmRepo || llmRepo === models?.llm.repo}
+              className="retro-btn retro-btn-outline settings-action text-gray-900 disabled:opacity-50 flex items-center gap-2"
+            >
+              <Rss className="w-4 h-4" />
+              Update
+            </button>
+          </div>
+
+          <label className="font-bold uppercase text-xs opacity-40">
               Hugging Face Repository
             </label>
-          </div>
           
-            <div className="flex gap-2 items-start">
-              <div className="flex-1">
-                <LlmSelector
-                  value={llmRepo}
-                  onChange={(repoId) => setLlmRepo(repoId)}
-                  disabled={showSwitchModal || loading}
-                  label=""
-                />
-              </div>
- 
+          <div className="flex gap-2 items-start">
+            <div className="flex-1">
+              <LlmSelector
+                value={llmRepo}
+                onChange={(repoId) => setLlmRepo(repoId)}
+                disabled={showSwitchModal || loading}
+                label=""
+              />
             </div>
-            <p className="text-[10px] mt-2 opacity-60">
-              {models?.llm.loaded ? (
-                <span className="text-green-600 font-bold">● System Loaded</span>
-              ) : (
-                <span className="text-red-500 font-bold">● Not Loaded</span>
-              )}
-            </p>
-          
+          </div>
+          <p className="text-[10px] mt-2 opacity-60">
+            {models?.llm.loaded ? (
+              <span className="text-green-600 font-bold">● System Loaded</span>
+            ) : (
+              <span className="text-red-500 font-bold">● Not Loaded</span>
+            )}
+          </p>
         </div>
 
-        <div className="pt-8 border-t border-gray-200 space-y-4">
+        <div className="settings-section pt-8 border-t border-gray-200 space-y-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2">
               <Brain className="w-5 h-5" />
               <h3 className="font-bold uppercase text-lg">TTS Backend</h3>
             </div>
             <button
               onClick={handleSaveTts}
               disabled={savingTts || loading || ttsBackend === (models?.tts?.backend === 'chatterbox-turbo' ? 'chatterbox-turbo' : 'qwen3-tts')}
-              className="retro-btn retro-btn-outline text-gray-900 disabled:opacity-50 flex items-center gap-2"
+              className="retro-btn retro-btn-outline settings-action text-gray-900 disabled:opacity-50 flex items-center gap-2"
             >
               <Rss className="w-4 h-4" />
               Update
@@ -277,7 +273,7 @@ export const Settings = () => {
           </p>
         </div>
 
-        <div className="pt-8 border-t border-gray-200">
+        <div className="settings-section pt-8 border-t border-gray-200">
           <div className="flex items-center gap-2 justify-between">
             <div className="flex flex-col gap-1">
               <h3 className="flex items-center gap-2 font-bold uppercase text-lg">
@@ -292,7 +288,7 @@ export const Settings = () => {
             
               <button
                 type="button"
-                className="retro-btn retro-btn-outline text-gray-900 disabled:opacity-50 flex items-center gap-2"
+                className="retro-btn retro-btn-outline settings-action text-gray-900 disabled:opacity-50 flex items-center gap-2"
                 onClick={flashFirmware}
                 disabled={!flashEnabled}
               >
@@ -343,7 +339,7 @@ export const Settings = () => {
         </div>
 
         {/* Device Status Section */}
-        <div className="pt-8 border-t border-gray-200">
+        <div className="settings-section pt-8 border-t border-gray-200">
           <h3 className="flex items-center gap-2 font-bold uppercase text-lg">
             <Radio className="w-5 h-5" />
             Device Settings

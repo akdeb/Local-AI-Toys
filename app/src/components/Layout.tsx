@@ -253,9 +253,9 @@ const LayoutInner = () => {
           </div>
 
         {activeUser?.current_personality_id && (
-          <div className="fixed bottom-0 z-20 left-64 right-0 pointer-events-none">
-            <div className="max-w-4xl mx-auto px-8 pb-6 pointer-events-auto">
-              <div className="bg-white border border-gray-200 rounded-full px-5 py-4 flex items-center justify-between shadow-xl">
+          <div className="session-dock fixed bottom-0 z-20 left-64 right-0 pointer-events-none">
+            <div className="session-dock-wrap max-w-4xl mx-auto px-8 pb-6 pointer-events-auto">
+              <div className="session-dock-inner bg-white border border-gray-200 rounded-full px-5 py-4 flex items-center justify-between shadow-xl">
                 <div className="min-w-0 flex items-center gap-4">
                   {activePersonalityImageSrc && !activePersonalityImageError && (
                     <div className="w-12 h-12 rounded-full overflow-hidden bg-white border border-gray-200">
