@@ -188,13 +188,13 @@ async def lifespan(app: FastAPI):
     if not hasattr(app.state, "silence_duration"):
         app.state.silence_duration = 1.5
     if not hasattr(app.state, "streaming_interval"):
-        app.state.streaming_interval = 3
+        app.state.streaming_interval = 2.0
     if not hasattr(app.state, "output_sample_rate"):
         app.state.output_sample_rate = 24_000
     
     safe_streaming_interval = float(app.state.streaming_interval)
-    if safe_streaming_interval < 1.2:
-        safe_streaming_interval = 1.2
+    if safe_streaming_interval < 1.5:
+        safe_streaming_interval = 1.5
 
     pipeline = VoicePipeline(
         stt_model=app.state.stt_model,
@@ -1647,7 +1647,7 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
         SILENCE_FRAMES = int(1.5 / (vad_frame_ms / 1000))  # 1.5s of silence
     
     # Desktop prebuffer settings
-    PREBUFFER_MS = 300
+    PREBUFFER_MS = 800
     PREBUFFER_BYTES = int(pipeline.output_sample_rate * (PREBUFFER_MS / 1000.0) * 2)
 
     async def _emit_ai_turn(ai_text: str, for_esp32: bool):
@@ -1872,6 +1872,9 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
             _normalize_tts_backend(getattr(pipeline, "tts_backend", None))
             == "chatterbox-turbo"
         )
+        tts_backend_norm = _normalize_tts_backend(getattr(pipeline, "tts_backend", None))
+        incremental_tts = True
+        tts_chunk_soft_limit = 260 if tts_backend_norm == "qwen3-tts" else 140
         active_voice_id = getattr(personality, "voice_id", None)
         ref_audio_path = resolve_voice_ref_audio_path(active_voice_id)
         ref_text = resolve_voice_ref_text(active_voice_id)
@@ -1888,7 +1891,11 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
             except Exception:
                 return
 
-        def _extract_speakable_chunks(buffer: str, flush: bool = False):
+        def _extract_speakable_chunks(
+            buffer: str,
+            flush: bool = False,
+            soft_limit: int = 140,
+        ):
             chunks = []
             while True:
                 m = re.search(r"(.+?[.!?。！？])(?:\s+|$)", buffer, flags=re.DOTALL)
@@ -1899,10 +1906,10 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
                 if chunk:
                     chunks.append(chunk)
 
-            if not flush and len(buffer) >= 140:
-                split_at = buffer.rfind(" ", 0, 120)
+            if not flush and len(buffer) >= soft_limit:
+                split_at = buffer.rfind(" ", 0, max(40, soft_limit - 20))
                 if split_at <= 0:
-                    split_at = 120
+                    split_at = max(40, soft_limit - 20)
                 chunk = buffer[:split_at].strip()
                 buffer = buffer[split_at:].lstrip()
                 if chunk:
@@ -1934,20 +1941,32 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
                         break
                     llm_text_parts.append(delta)
                     carry += delta
-                    ready, carry = _extract_speakable_chunks(carry, flush=False)
-                    for chunk in ready:
-                        chunk = sanitize_spoken_text(
-                            chunk, allow_paralinguistic=allow_paralinguistic
-                        ).strip()
-                        if chunk:
-                            await text_queue.put(chunk)
+                    if incremental_tts:
+                        ready, carry = _extract_speakable_chunks(
+                            carry,
+                            flush=False,
+                            soft_limit=tts_chunk_soft_limit,
+                        )
+                        for chunk in ready:
+                            chunk = sanitize_spoken_text(
+                                chunk, allow_paralinguistic=allow_paralinguistic
+                            ).strip()
+                            if chunk:
+                                await text_queue.put(chunk)
             except asyncio.CancelledError:
                 return
             except Exception as e:
                 llm_error.append(e)
             finally:
                 if carry and not cancel_event.is_set():
-                    ready, _ = _extract_speakable_chunks(carry, flush=True)
+                    if incremental_tts:
+                        ready, _ = _extract_speakable_chunks(
+                            carry,
+                            flush=True,
+                            soft_limit=tts_chunk_soft_limit,
+                        )
+                    else:
+                        ready = [carry.strip()]
                     for chunk in ready:
                         chunk = sanitize_spoken_text(
                             chunk, allow_paralinguistic=allow_paralinguistic
@@ -1994,7 +2013,7 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
                 cancel_event.set()
                 if producer_task and not producer_task.done():
                     producer_task.cancel()
-                with suppress(Exception):
+                with suppress(asyncio.CancelledError, Exception):
                     await producer_task
                 opus.flush(pad_final_frame=True)
                 while opus_packets:
@@ -2063,7 +2082,7 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
                 cancel_event.set()
                 if producer_task and not producer_task.done():
                     producer_task.cancel()
-                with suppress(Exception):
+                with suppress(asyncio.CancelledError, Exception):
                     await producer_task
                 if buffered:
                     try:
@@ -2234,10 +2253,10 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
         cancel_event.set()
         for task in pending:
             task.cancel()
-            with suppress(Exception):
+            with suppress(asyncio.CancelledError, Exception):
                 await task
         for task in done:
-            with suppress(Exception):
+            with suppress(asyncio.CancelledError, Exception):
                 await task
         return
 
@@ -2373,16 +2392,16 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
         if bedtime_sequence_task and not bedtime_sequence_task.done():
             cancel_event.set()
             bedtime_sequence_task.cancel()
-            with suppress(Exception):
+            with suppress(asyncio.CancelledError, Exception):
                 await bedtime_sequence_task
         if bedtime_disconnect_task and not bedtime_disconnect_task.done():
             bedtime_disconnect_task.cancel()
-            with suppress(Exception):
+            with suppress(asyncio.CancelledError, Exception):
                 await bedtime_disconnect_task
         if current_tts_task and not current_tts_task.done():
             cancel_event.set()
             current_tts_task.cancel()
-            with suppress(Exception):
+            with suppress(asyncio.CancelledError, Exception):
                 await current_tts_task
         if is_esp32:
             try:
@@ -2450,7 +2469,7 @@ def main():
         "--silence_threshold", type=float, default=0.03, help="Silence threshold"
     )
     parser.add_argument(
-        "--streaming_interval", type=float, default=3, help="Streaming interval"
+        "--streaming_interval", type=float, default=2.0, help="Streaming interval"
     )
     parser.add_argument(
         "--output_sample_rate",
