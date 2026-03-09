@@ -1,11 +1,11 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Users, LockKeyhole, Volume2, Settings, History, Plus, Gamepad2, Home, Dot } from 'lucide-react';
+import { Users, LockKeyhole, Volume2, Settings, History, Plus, Home, Dot } from 'lucide-react';
 import clsx from 'clsx';
 import { useActiveUser } from '../state/ActiveUserContext';
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { Logo } from './Logo';
-import elatoPng from '../assets/device.png';
+import elatoPng from '../assets/elato.png';
 import { Modal } from './Modal';
 import { CreateTiles } from './CreateTiles';
 
@@ -35,11 +35,11 @@ const NavItem = ({
     <Link
       to={to}
       className={clsx(
-        "flex items-center transition-colors hover:bg-gray-100",
+        "sidebar-nav-item flex items-center transition-colors",
         iconOnly ? "justify-center w-full h-10 rounded-2xl" : "gap-3 px-4 py-3",
         isActive
           ? "bg-gray-100 text-black"
-          : "bg-white",
+          : "bg-white text-gray-900 hover:bg-gray-50",
         className
       )}
       aria-label={label}
@@ -60,7 +60,7 @@ export const Sidebar = () => {
   const { activeUser } = useActiveUser();
   const [_activePersonalityName, setActivePersonalityName] = useState<string | null>(null);
   const [activeExperienceId, setActiveExperienceId] = useState<string | null>(null);
-  const [activeExperienceType, setActiveExperienceType] = useState<string | null>(null);
+  const [_activeExperienceType, setActiveExperienceType] = useState<string | null>(null);
   const [_deviceConnected, setDeviceConnected] = useState<boolean>(false);
   const [_deviceSessionId, setDeviceSessionId] = useState<string | null>(null);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
@@ -103,9 +103,9 @@ export const Sidebar = () => {
   }, [activeUser?.current_personality_id]);
 
   return (
-    <div className="w-64 shrink-0 bg-transparent p-6 flex flex-col gap-6 h-full overflow-y-auto overscroll-contain justify-between">
-      <div className="bg-white rounded-[24px] overflow-hidden shadow-[0_12px_28px_rgba(0,0,0,0.08)] border border-gray-200">
-        <div className="p-4 pb-2 bg-white text-black flex flex-col items-center">
+    <div className="sidebar-wrap w-64 shrink-0 bg-transparent p-6 flex flex-col gap-6 h-full overflow-y-auto overscroll-contain justify-between">
+      <div className="sidebar-shell bg-white rounded-[24px] overflow-hidden shadow-[0_12px_28px_rgba(0,0,0,0.08)] border border-gray-200">
+        <div className="sidebar-brand p-4 pb-2 bg-white text-black flex flex-col items-center">
           <Logo />
           <p className="text-xs font-mono opacity-90">Where Toys Come Alive</p>
         </div>
@@ -123,8 +123,8 @@ export const Sidebar = () => {
             </div>
             <NavItem
               to={
-                activeExperienceId && activeExperienceType
-                  ? `/?tab=${encodeURIComponent(activeExperienceType)}&focus=${encodeURIComponent(activeExperienceId)}`
+                activeExperienceId
+                  ? `/?focus=${encodeURIComponent(activeExperienceId)}`
                   : "/"
               }
               icon={Home}
@@ -146,7 +146,7 @@ export const Sidebar = () => {
           </nav>
         </div>
       </div>
-      <div className="flex flex-col gap-3 flex-wrap text-xs font-mono">
+      <div className="sidebar-footer flex flex-col gap-3 flex-wrap text-xs font-mono">
         <a
           href="https://www.elatoai.com/products"
           target="_blank"

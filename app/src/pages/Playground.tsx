@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import { Image as ImageIcon, Pencil, Trash2, MessageCircle, BookOpen, Maximize2, Gamepad2 } from 'lucide-react';
+import { Image as ImageIcon, Pencil, Trash2, BookOpen, Maximize2, Moon } from 'lucide-react';
 import { useActiveUser } from '../state/ActiveUserContext';
 import { ExperienceModal, ExperienceForModal } from '../components/ExperienceModal';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -11,16 +11,10 @@ import { Modal } from '../components/Modal';
 
 type ExperienceType = 'personality' | 'game' | 'story';
 
-const TAB_CONFIG: { id: ExperienceType; label: string; icon: typeof MessageCircle }[] = [
-  { id: 'story', label: 'Stories', icon: BookOpen },
-  { id: 'game', label: 'Games', icon: Gamepad2 },
-  { id: 'personality', label: 'Chat', icon: MessageCircle },
-];
-
 export const Playground = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialTab = (searchParams.get('tab') as ExperienceType) || 'personality';
-  const [activeTab, setActiveTab] = useState<ExperienceType>(initialTab);
+  const activeTab: ExperienceType = 'story';
+  const [bedtimeMode, setBedtimeMode] = useState(false);
   
   const [experiences, setExperiences] = useState<any[]>([]);
   const [voices, setVoices] = useState<any[]>([]);
@@ -110,11 +104,6 @@ export const Playground = () => {
   }, [activeTab]);
 
   useEffect(() => {
-    const tab = (searchParams.get('tab') as ExperienceType) || 'personality';
-    if (tab !== activeTab) setActiveTab(tab);
-  }, [searchParams, activeTab]);
-
-  useEffect(() => {
     const focusId = searchParams.get('focus');
     if (!focusId || loading) return;
     const el = document.getElementById(`experience-${focusId}`);
@@ -145,6 +134,22 @@ export const Playground = () => {
       }
     };
     loadDownloaded();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadMode = async () => {
+      try {
+        const res = await api.getAppMode();
+        if (!cancelled) setBedtimeMode((res?.mode || '').toLowerCase() === 'bedtime');
+      } catch {
+        if (!cancelled) setBedtimeMode(false);
+      }
+    };
+    loadMode();
     return () => {
       cancelled = true;
     };
@@ -215,11 +220,6 @@ export const Playground = () => {
       setError(null);
       await api.updateUser(activeUserId, { current_personality_id: experienceId });
       await refreshUsers();
-      try {
-        await api.setAppMode('chat');
-      } catch {
-        // non-blocking
-      }
     } catch (e: any) {
       setError(e?.message || 'Failed to assign experience');
     }
@@ -243,39 +243,21 @@ export const Playground = () => {
     setModalOpen(true);
   };
 
-  const handleTabChange = (tab: ExperienceType) => {
-    setActiveTab(tab);
-    setSearchParams({ tab });
+  const toggleBedtimeMode = async () => {
+    const next = !bedtimeMode;
+    setBedtimeMode(next);
+    try {
+      const mode = next ? 'bedtime' : 'story';
+      await api.setAppMode(mode);
+      window.dispatchEvent(new CustomEvent('app-mode-changed', { detail: { mode } }));
+    } catch (e) {
+      console.error('Failed to set bedtime mode', e);
+      setBedtimeMode(!next);
+    }
   };
 
   return (
     <div>
-      {/* Floating Tab Bar */}
-      <div className="sticky top-0 z-20 -mx-8 px-8 pt-2 pb-4 bg-transparent">
-        <div className="flex justify-center">
-          <div className="inline-flex bg-gray-100 rounded-full p-1 shadow-[0_6px_0_rgba(210,210,210,1)]">
-            {TAB_CONFIG.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => handleTabChange(tab.id)}
-                  className={`flex items-center gap-2 px-5 py-2 rounded-full font-black uppercase tracking-wide transition-all ${
-                    isActive
-                      ? 'bg-white text-gray-900'
-                      : 'bg-transparent text-gray-500 hover:bg-white'
-                  }`}
-                >
-                  <Icon size={18} />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
       <ExperienceModal 
         open={modalOpen}
         mode={modalMode}
@@ -340,9 +322,38 @@ style={{
       )}
       {!loading && !error && experiences.length === 0 && (
         <div className="retro-card font-mono text-sm">
-          No {activeTab === 'personality' ? 'personalities' : activeTab === 'game' ? 'games' : 'stories'} found.
+          No stories found.
         </div>
       )}
+
+      <div className="flex items-center justify-between">
+        <h2 className="text-3xl font-black flex items-center gap-3">
+          <BookOpen size={28} />
+          STORIES
+        </h2>
+        <div className="inline-flex items-center gap-3 rounded-full px-3 py-2">
+          <span className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-gray-700">
+            <Moon fill="currentColor" size={14} />
+            Bedtime mode
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={bedtimeMode}
+            aria-label="Toggle bedtime mode"
+            onClick={toggleBedtimeMode}
+            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-200 ${
+              bedtimeMode ? 'bg-purple-500 border-purple-500' : 'bg-gray-200 border-gray-300'
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200 ${
+                bedtimeMode ? 'translate-x-5' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-8">
         {sortedExperiences.map((p) => (

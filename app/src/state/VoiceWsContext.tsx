@@ -36,6 +36,7 @@ type Ctx = {
   isPaused: boolean;
   isSpeaking: boolean;
   micLevel: number;
+  isBedtimeMode: boolean;
   transcript: TranscriptEntry[];
 };
 
@@ -63,7 +64,9 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
   const [isPaused, setIsPaused] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [micLevel, setMicLevel] = useState<number>(0);
+  const [isBedtimeMode, setIsBedtimeMode] = useState(false);
   const lastLevelAtRef = useRef<number>(0);
+  const isBedtimeModeRef = useRef(false);
 
   const [latestSessionId, setLatestSessionId] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
@@ -261,7 +264,19 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
     mediaStreamRef.current = null;
   };
 
+  const applyBedtimeMode = (next: boolean) => {
+    isBedtimeModeRef.current = next;
+    setIsBedtimeMode(next);
+    if (next && isRecordingRef.current) {
+      stopRecording();
+    }
+  };
+
   const startRecording = async () => {
+    if (isBedtimeModeRef.current) {
+      stopRecording();
+      return;
+    }
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       setError("Voice WebSocket is not connected");
@@ -500,6 +515,11 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
             enqueueTtsChunk(msg.data);
           }
         } else if (msg.type === "audio_end") {
+          if (isBedtimeModeRef.current) {
+            awaitingResumeRef.current = false;
+            stopRecording();
+            return;
+          }
           awaitingResumeRef.current = true;
           if (!ttsPlaybackActiveRef.current && ttsPcmQueueRef.current.length === 0) {
             awaitingResumeRef.current = false;
@@ -542,12 +562,43 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
           }
         } else if (msg.type === "error") {
           setError(msg.message || "Unknown error");
+        } else if ((msg as any).type === "bedtime_mode") {
+          const micEnabled = Boolean((msg as any).mic_enabled);
+          applyBedtimeMode(!micEnabled);
         }
       } catch {
         // ignore
       }
     };
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadMode = async () => {
+      try {
+        const res = await api.getAppMode();
+        if (!cancelled) {
+          const bedtime = (res?.mode || "").toLowerCase() === "bedtime";
+          applyBedtimeMode(bedtime);
+        }
+      } catch {
+        if (!cancelled) applyBedtimeMode(false);
+      }
+    };
+
+    const onModeChanged = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ mode?: string }>).detail;
+      const bedtime = (detail?.mode || "").toLowerCase() === "bedtime";
+      applyBedtimeMode(bedtime);
+    };
+
+    loadMode();
+    window.addEventListener("app-mode-changed", onModeChanged as EventListener);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("app-mode-changed", onModeChanged as EventListener);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -619,6 +670,7 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
       isPaused,
       isSpeaking,
       micLevel,
+      isBedtimeMode,
       transcript,
     }),
     [
@@ -632,6 +684,7 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
       isPaused,
       isSpeaking,
       micLevel,
+      isBedtimeMode,
       transcript,
     ]
   );

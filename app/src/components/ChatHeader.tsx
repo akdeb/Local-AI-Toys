@@ -1,4 +1,3 @@
-import React from "react";
 import { ChatSplitAvatar } from "./ChatSplitAvatar";
 
 type ChatHeaderProps = {

@@ -53,6 +53,14 @@ def _env_flag(name: str) -> bool:
     value = str(os.environ.get(name, "")).strip().lower()
     return value in {"1", "true", "yes", "on"}
 
+
+def _env_flag_with_default_true(name: str) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or str(raw).strip() == "":
+        return True
+    return _env_flag(name)
+
+
 def _strip_thinking(text: str) -> str:
     if not text:
         return text
@@ -68,6 +76,16 @@ def _strip_thinking_keep_ws(text: str) -> str:
     return cleaned
 
 
+def _is_unsupported_thinking_kw_error(exc: Exception) -> bool:
+    msg = str(exc)
+    return (
+        "unexpected keyword argument 'enable_thinking'" in msg
+        or 'unexpected keyword argument "enable_thinking"' in msg
+        or "unexpected keyword argument 'thinking_budget'" in msg
+        or 'unexpected keyword argument "thinking_budget"' in msg
+    )
+
+
 class VoicePipeline:
     def __init__(
         self,
@@ -75,7 +93,7 @@ class VoicePipeline:
         silence_duration=1.5,
         input_sample_rate=16_000,
         output_sample_rate=24_000,
-        streaming_interval=1.5,
+        streaming_interval=3,
         frame_duration_ms=30,
         stt_model=STT,
         llm_model=LLM,
@@ -96,6 +114,7 @@ class VoicePipeline:
         self.llm_backend = "lm"
         self.llm = None
         self.tokenizer = None
+        self.disable_thinking = _env_flag_with_default_true("MLX_DISABLE_THINKING")
 
         self.llm_lock = asyncio.Lock()
         self.stt_lock = asyncio.Lock()
@@ -214,40 +233,33 @@ class VoicePipeline:
             return self._messages_to_plain_prompt(
                 messages, add_generation_prompt=add_generation_prompt
             )
-        if self.llm_backend == "vlm":
-            # Force no-thinking mode for vision path.
+        base_kwargs = dict(tokenize=False, add_generation_prompt=add_generation_prompt)
+
+        # Hard-disable thinking by default (can be overridden with MLX_DISABLE_THINKING=0).
+        if self.disable_thinking:
+            for thinking_kwargs in (
+                {"enable_thinking": False, "thinking_budget": 0},
+                {"enable_thinking": False},
+                {"clear_thinking": True},
+            ):
+                try:
+                    return self.tokenizer.apply_chat_template(
+                        messages, **base_kwargs, **thinking_kwargs
+                    )
+                except TypeError:
+                    continue
+
+        if clear_thinking is not None:
             try:
                 return self.tokenizer.apply_chat_template(
                     messages,
-                    tokenize=False,
-                    add_generation_prompt=add_generation_prompt,
-                    enable_thinking=False,
+                    **base_kwargs,
+                    clear_thinking=clear_thinking,
                 )
             except TypeError:
-                try:
-                    return self.tokenizer.apply_chat_template(
-                        messages,
-                        tokenize=False,
-                        add_generation_prompt=add_generation_prompt,
-                        clear_thinking=True,
-                    )
-                except TypeError:
-                    pass
-        try:
-            if clear_thinking is None:
-                return self.tokenizer.apply_chat_template(
-                    messages, tokenize=False, add_generation_prompt=add_generation_prompt
-                )
-            return self.tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=add_generation_prompt,
-                clear_thinking=clear_thinking,
-            )
-        except TypeError:
-            return self.tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=add_generation_prompt
-            )
+                pass
+
+        return self.tokenizer.apply_chat_template(messages, **base_kwargs)
 
     def _generate(self, prompt: str, max_tokens: int):
         if self.llm_backend == "vlm":
@@ -275,49 +287,84 @@ class VoicePipeline:
                 response = response[0]
             return _strip_thinking(str(response).strip())
 
-        response = mx_generate(
-            self.llm,
-            self.tokenizer,
+        lm_kwargs = dict(
             prompt=prompt,
             max_tokens=max_tokens,
             verbose=False,
         )
+        if self.disable_thinking:
+            lm_kwargs["enable_thinking"] = False
+
+        try:
+            response = mx_generate(
+                self.llm,
+                self.tokenizer,
+                **lm_kwargs,
+            )
+        except TypeError:
+            # Older mlx-lm versions may not support enable_thinking.
+            lm_kwargs.pop("enable_thinking", None)
+            response = mx_generate(
+                self.llm,
+                self.tokenizer,
+                **lm_kwargs,
+            )
         return _strip_thinking(response.strip())
 
     def _stream_generate_sync(self, prompt: str, max_tokens: int):
         if self.llm_backend == "vlm":
             if mx_vlm_stream_generate is None:
                 raise RuntimeError("mlx-vlm stream_generate is unavailable")
-            stream = mx_vlm_stream_generate(
-                self.llm,
-                self.tokenizer,
+            primary_kwargs = dict(
                 prompt=prompt,
                 max_tokens=max_tokens,
                 enable_thinking=False,
+                thinking_budget=0 if self.disable_thinking else None,
             )
-        else:
-            stream = mx_stream_generate(
+            fallback_kwargs = dict(prompt=prompt, max_tokens=max_tokens)
+            stream_creator = lambda kwargs: mx_vlm_stream_generate(
                 self.llm,
                 self.tokenizer,
+                **kwargs,
+            )
+        else:
+            primary_kwargs = dict(
                 prompt=prompt,
                 max_tokens=max_tokens,
+            )
+            if self.disable_thinking:
+                primary_kwargs["enable_thinking"] = False
+            fallback_kwargs = dict(prompt=prompt, max_tokens=max_tokens)
+            stream_creator = lambda kwargs: mx_stream_generate(
+                self.llm,
+                self.tokenizer,
+                **kwargs,
             )
 
         raw_accum = ""
         clean_accum = ""
-        for item in stream:
-            segment = getattr(item, "text", "")
-            if not segment:
-                continue
-            raw_accum += str(segment)
-            cleaned = _strip_thinking_keep_ws(raw_accum)
-            if cleaned.startswith(clean_accum):
-                delta = cleaned[len(clean_accum) :]
-            else:
-                delta = cleaned
-            clean_accum = cleaned
-            if delta:
-                yield delta
+        tried_fallback = False
+        while True:
+            try:
+                stream = stream_creator(primary_kwargs if not tried_fallback else fallback_kwargs)
+                for item in stream:
+                    segment = getattr(item, "text", "")
+                    if not segment:
+                        continue
+                    raw_accum += str(segment)
+                    cleaned = _strip_thinking_keep_ws(raw_accum)
+                    if cleaned.startswith(clean_accum):
+                        delta = cleaned[len(clean_accum) :]
+                    else:
+                        delta = cleaned
+                    clean_accum = cleaned
+                    if delta:
+                        yield delta
+                break
+            except TypeError as e:
+                if tried_fallback or not _is_unsupported_thinking_kw_error(e):
+                    raise
+                tried_fallback = True
 
     async def generate_text_simple(
         self,
@@ -357,6 +404,7 @@ class VoicePipeline:
     ) -> str:
         if messages is None:
             sys_content = system_prompt or (
+                "{%- set enable_thinking = false %}"
                 "You are a helpful voice assistant. You always respond with short "
                 "sentences and never use punctuation like parentheses or colons "
                 "that wouldn't appear in conversational speech."
@@ -387,6 +435,7 @@ class VoicePipeline:
     ):
         if messages is None:
             sys_content = system_prompt or (
+                "{%- set enable_thinking = false %}"
                 "You are a helpful voice assistant. You always respond with short "
                 "sentences and never use punctuation like parentheses or colons "
                 "that wouldn't appear in conversational speech."

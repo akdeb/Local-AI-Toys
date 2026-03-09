@@ -23,6 +23,18 @@
     color: #111827;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   }
+
+  body.bedtime-mode {
+    --color-retro-bg: #0b1226;
+    --color-retro-fg: #dbe7ff;
+    --color-retro-card: #f8fbff;
+    --color-retro-accent: #7c90ff;
+    --color-retro-yellow: #f8d35d;
+    --shadow-retro: 0 10px 24px rgba(7, 15, 35, 0.45);
+    --shadow-retro-sm: 0 6px 14px rgba(7, 15, 35, 0.25);
+    color: #dbe7ff;
+    background: radial-gradient(circle at 20% 0%, #152347 0%, #0b1226 45%, #070d1c 100%);
+  }
 }
 
 @layer utilities {
@@ -211,6 +223,83 @@
     border-radius: var(--radius-retro);
   }
 
+  body.bedtime-mode .retro-card {
+    background-color: #f8fbff;
+    color: #0f172a;
+    border: 1px solid #d6e0f0;
+  }
+
+  body.bedtime-mode .retro-btn-outline {
+    background-color: #eef2ff;
+    color: #1e293b;
+    border-color: #c7d2fe;
+    box-shadow: 0 6px 0 #a5b4fc;
+  }
+
+  body.bedtime-mode .retro-input {
+    background-color: #ffffff;
+    color: #0f172a;
+    border-color: #cbd5e1;
+  }
+
+  body.bedtime-mode .sidebar-shell {
+    background: rgba(11, 18, 38, 0.78);
+    border-color: #2b3a62;
+    box-shadow: 0 20px 40px rgba(3, 8, 20, 0.5);
+    backdrop-filter: blur(6px);
+  }
+
+  body.bedtime-mode .sidebar-brand {
+    background: rgba(11, 18, 38, 0.3);
+    color: #e2e8f0;
+  }
+
+  body.bedtime-mode .sidebar-nav-item {
+    border-color: transparent;
+  }
+
+  body.bedtime-mode .sidebar-nav-item.bg-white {
+    background: rgba(14, 26, 53, 0.9);
+    color: #dbe7ff !important;
+  }
+
+  body.bedtime-mode .sidebar-nav-item.bg-gray-100 {
+    background: rgba(99, 123, 255, 0.2);
+    color: #ffffff !important;
+  }
+
+  body.bedtime-mode .sidebar-nav-item:hover {
+    background: rgba(64, 86, 176, 0.28) !important;
+  }
+
+  body.bedtime-mode .sidebar-footer {
+    color: #aebee6;
+  }
+
+  body.bedtime-mode .session-dock-inner {
+    background: rgba(12, 24, 48, 0.94);
+    border-color: #2e3e6c;
+    box-shadow: 0 14px 30px rgba(3, 8, 20, 0.55);
+    backdrop-filter: blur(8px);
+  }
+
+  body.bedtime-mode .session-dock-inner .text-black,
+  body.bedtime-mode .session-dock-inner .text-gray-900,
+  body.bedtime-mode .session-dock-inner .text-gray-800 {
+    color: #f1f5ff !important;
+  }
+
+  body.bedtime-mode .session-dock-inner .text-gray-700,
+  body.bedtime-mode .session-dock-inner .text-gray-600,
+  body.bedtime-mode .session-dock-inner .text-gray-500 {
+    color: #b6c4e6 !important;
+  }
+
+  body.bedtime-mode .session-dock-inner .retro-btn-purple {
+    background: linear-gradient(180deg, #8ba1ff 0%, #7689ff 100%);
+    --shadow-color: #4f5ed1;
+  }
+
    .retro-card-no-padding {
     padding: 0;
     box-shadow: none;
@@ -277,4 +366,63 @@
     background: var(--color-retro-accent);
     border: 2px solid black;
   }
+
+  .settings-shell {
+    border-radius: 30px;
+  }
+
+  .settings-action {
+    min-width: 132px;
+  }
+
+  .live-header-surface {
+    min-height: 164px;
+  }
+
+  body.bedtime-mode .settings-title {
+    color: #dbe7ff;
+  }
+
+  body.bedtime-mode .settings-shell {
+    background: rgba(248, 251, 255, 0.96);
+    border-color: #d6e0f0;
+    box-shadow: 0 18px 32px rgba(3, 8, 20, 0.32);
+  }
+
+  body.bedtime-mode .settings-shell .settings-section {
+    border-color: #d8e3f5;
+  }
+
+  body.bedtime-mode .settings-shell .text-gray-500 {
+    color: #64748b;
+  }
+
+  body.bedtime-mode .live-header-surface {
+    background: rgba(13, 24, 51, 0.86);
+    border-color: #2f416d;
+    box-shadow: 0 18px 32px rgba(3, 8, 20, 0.42);
+    backdrop-filter: blur(8px);
+  }
+
+  body.bedtime-mode .live-title {
+    color: #dbe7ff;
+  }
+
+  body.bedtime-mode .live-meta {
+    color: #b8c7ea;
+  }
+
+  body.bedtime-mode .live-meta .text-black {
+    color: #f8fbff;
+  }
+
+  body.bedtime-mode .live-meta .text-gray-500 {
+    color: #9fb0d8;
+  }
+
+  body.bedtime-mode .live-orb-image {
+    border-color: #d7e2f6;
+    background: #f8fbff;
+  }
+
 }
