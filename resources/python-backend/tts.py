@@ -10,7 +10,7 @@ class ChatterboxTTS:
     """Chatterbox Turbo TTS backend with voice cloning support."""
 
     # Chunk size in samples (120ms at 24kHz = 2880 samples)
-    # This MUST match the Opus frame size (OPUS_FRAME_SAMPLES in utils.py)
+    # This MUST match the Opus frame size  (OPUS_FRAME_SAMPLES in utils.py)
     CHUNK_SAMPLES = 2880
 
     def __init__(
