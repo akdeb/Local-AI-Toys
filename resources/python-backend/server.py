@@ -23,6 +23,7 @@ os.environ.setdefault("HF_XET_DISABLE", "1")
 os.environ.setdefault("HF_HUB_DISABLE_HF_XET", "1")
 
 from engine.characters import build_llm_messages, build_runtime_context, build_system_prompt
+from engine.conversation import build_context_history
 
 import mlx.core as mx
 import uvicorn
@@ -32,7 +33,7 @@ from starlette.websockets import WebSocketState
 import db_service  # DB ops exposed via HTTP endpoints
 from fastapi.middleware.cors import CORSMiddleware
 import utils
-from utils import STT, LLM, TTS, create_opus_packetizer
+from utils import STT, LLM, TTS, QWEN3_TTS, create_opus_packetizer
 from services import (
     ConnectionManager,
     MdnsService,
@@ -40,6 +41,7 @@ from services import (
     firmware_bin_path,
     get_local_ip,
     list_serial_ports,
+    prepare_firmware_images,
     resolve_voice_ref_audio_path,
     resolve_voice_ref_text,
     run_firmware_flash,
@@ -51,7 +53,7 @@ CLIENT_TYPE_DESKTOP = "desktop"
 CLIENT_TYPE_ESP32 = "esp32"
 
 # Bump this string when changing prompt/sanitization so logs prove which code is running.
-SERVER_BUILD_MARKER = "sanitize_v1_paraling_v2"
+SERVER_BUILD_MARKER = "sanitize_v1_paraling_v2_greeting_v3_context_v1"
 
 
 logging.basicConfig(
@@ -289,7 +291,7 @@ async def health():
 async def startup_status():
     voices_n = db_service.db_service.get_table_count("voices")
     personalities_n = db_service.db_service.get_table_count("personalities")
-    seeded = bool(getattr(db_service.db_service, "seeded_ok", False)) and voices_n > 0 and personalities_n > 0
+    seeded = bool(getattr(db_service.db_service, "seeded_ok", False))
     pipeline_ready = bool(getattr(app.state, "pipeline_ready", False))
     return {
         "ready": bool(seeded and pipeline_ready),
@@ -430,18 +432,28 @@ async def firmware_ports():
 
 @app.post("/firmware/flash")
 async def firmware_flash(body: FirmwareFlashRequest):
-    fw_path = firmware_bin_path()
-    if not fw_path.exists():
-        raise HTTPException(status_code=404, detail=f"firmware.bin not found at {fw_path}")
+    firmware_dir, prep_log = prepare_firmware_images(auto_build=True)
+    if not firmware_dir:
+        fallback = firmware_bin_path()
+        raise HTTPException(
+            status_code=404,
+            detail=f"Firmware images not found. {prep_log} (expected firmware at {fallback})",
+        )
+
+    fw_path = firmware_dir / "firmware.bin"
 
     def run() -> Dict[str, object]:
-        return run_firmware_flash(
+        res = run_firmware_flash(
             port=body.port,
             baud=body.baud,
             chip=body.chip,
             offset=body.offset,
             firmware_path=fw_path,
         )
+        if prep_log:
+            existing = str(res.get("output") or "")
+            res["output"] = (prep_log + "\n\n" + existing).strip()
+        return res
 
     return await asyncio.to_thread(run)
 
@@ -747,6 +759,86 @@ async def switch_model(body: ModelSwitchRequest):
         generate_progress(),
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )
+
+
+class TtsSwitchRequest(BaseModel):
+    tts_backend: str
+
+
+@app.post("/models/switch-tts")
+async def switch_tts_model(body: TtsSwitchRequest):
+    """
+    Download TTS weights (if needed) and hot-swap the TTS backend.
+    Returns newline-delimited JSON progress updates.
+    """
+    global pipeline
+
+    requested = (body.tts_backend or "").strip()
+    normalized_backend = _normalize_tts_backend(requested)
+    target_repo = QWEN3_TTS if normalized_backend == "qwen3-tts" else TTS
+
+    async def generate_progress():
+        try:
+            yield (
+                json.dumps(
+                    {
+                        "stage": "downloading",
+                        "progress": 0.0,
+                        "message": f"Preparing {normalized_backend}...",
+                    }
+                )
+                + "\n"
+            )
+
+            from huggingface_hub import snapshot_download
+
+            try:
+                snapshot_download(
+                    repo_id=target_repo,
+                    local_files_only=False,
+                    resume_download=True,
+                    max_workers=4,
+                )
+            except Exception as e:
+                yield json.dumps({"stage": "error", "error": f"Download failed: {str(e)}"}) + "\n"
+                return
+
+            yield json.dumps({"stage": "downloading", "progress": 1.0, "message": "Download complete!"}) + "\n"
+            yield json.dumps({"stage": "loading", "progress": 0.0, "message": "Loading TTS weights..."}) + "\n"
+
+            if not pipeline:
+                yield json.dumps({"stage": "error", "error": "Pipeline is not initialized"}) + "\n"
+                return
+
+            try:
+                await pipeline.set_tts_backend(normalized_backend)
+                db_service.db_service.set_setting("tts_backend", normalized_backend)
+                app.state.tts_backend = normalized_backend
+            except Exception as e:
+                logger.error(f"Failed to switch TTS backend: {e}")
+                yield json.dumps({"stage": "error", "error": f"Failed to switch TTS backend: {str(e)}"}) + "\n"
+                return
+
+            yield json.dumps({"stage": "loading", "progress": 1.0, "message": "TTS weights loaded!"}) + "\n"
+            yield (
+                json.dumps(
+                    {
+                        "stage": "complete",
+                        "progress": 1.0,
+                        "message": f"Switched to {normalized_backend}",
+                    }
+                )
+                + "\n"
+            )
+        except Exception as e:
+            logger.error(f"TTS switch failed: {e}")
+            yield json.dumps({"stage": "error", "error": str(e)}) + "\n"
+
+    return StreamingResponse(
+        generate_progress(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
@@ -1353,11 +1445,6 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
 
     # Helper to build LLM context with conversation history
     def _build_llm_context(user_text: str) -> List[Dict[str, str]]:
-        try:
-            convos = db_service.db_service.get_conversations(session_id=session_id)
-        except Exception:
-            convos = []
-
         runtime = build_runtime_context()
         user_ctx = None
         try:
@@ -1446,18 +1533,20 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
             extra_system_prompt=behavior_constraints,
         )
 
-        history_msgs: List[Dict[str, str]] = []
-        for c in convos:
-            if c.role == "user":
-                history_msgs.append({"role": "user", "content": c.transcript})
-            elif c.role == "ai":
-                history_msgs.append({"role": "assistant", "content": c.transcript})
+        history_msgs = build_context_history(
+            db_service=db_service.db_service,
+            current_session_id=session_id,
+            user_id=user_id,
+            personality_id=personality_id,
+            max_history_messages=80,
+            max_prior_sessions=6,
+        )
 
         return build_llm_messages(
             system_prompt=sys_prompt,
             history=history_msgs,
             user_text=user_text,
-            max_history_messages=30,
+            max_history_messages=80,
         )
 
     # Get volume setting
@@ -1511,29 +1600,34 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
     cancel_event = asyncio.Event()
     try:
         experience_type = getattr(personality, "type", "personality") if personality else "personality"
+        greeting_max_tokens = 90
         if experience_type == "game":
+            greeting_max_tokens = 140
             greeting_user_text = (
-                "[System] The user just connected. Give a short greeting (under 8 words) "
-                "and immediately start the game with the first move. Do NOT ask if they are ready."
+                "[System] The user just connected. Give a short greeting and immediately start the game "
+                "with the first move. Keep it complete and natural. Do NOT ask if they are ready."
             )
         elif experience_type == "story":
+            greeting_max_tokens = 220
             if _is_bedtime_story_mode():
                 greeting_user_text = (
                     "[System] The user just connected in bedtime mode. Start a calm bedtime story immediately. "
-                    "Use 2-3 short soothing sentences. Do not ask questions or wait for input."
+                    "Use 3-5 soothing complete sentences. Do not ask questions or wait for input."
                 )
             else:
                 greeting_user_text = (
                     "[System] The user just connected. Start a choose-your-adventure story immediately. "
-                    "Use 1-2 short opening sentences and end with exactly two choices."
+                    "Use 2-4 complete opening sentences and end with exactly two clear choices."
                 )
         else:
-            greeting_user_text = "[System] The user just connected. Greet them with a short friendly sentence (under 8 words)."
+            greeting_user_text = (
+                "[System] The user just connected. Greet them with a short friendly complete sentence."
+            )
         greeting_messages = _build_llm_context(greeting_user_text)
         greeting_text = await pipeline.generate_response(
             greeting_user_text,
             messages=greeting_messages,
-            max_tokens=50,
+            max_tokens=greeting_max_tokens,
             clear_thinking=True if thinking_model else None,
         )
         greeting_text = greeting_text.strip() or "Hello!"

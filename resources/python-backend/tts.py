@@ -95,7 +95,7 @@ class Qwen3TTS:
 
     def __init__(
         self,
-        model_id: str = "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16",
+        model_id: str = "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-4bit",
         ref_audio_path: Optional[str] = None,
         output_sample_rate: int = 24_000,
         temperature: float = 0.9,
@@ -118,21 +118,6 @@ class Qwen3TTS:
         self.model = None
         self._cached_ref_path: Optional[str] = None
         self._cached_ref_audio = None
-        self.ref_text_map = {
-            "santa.wav": (
-                "Ho ho ho! Your toy is awake, the AI elves are working locally, and Santa's "
-                "workshop is officially running on localhost."
-            ),
-            "narrator1.wav": (
-                "When the day feels heavy, remember this: You are not behind. Life unfolds in "
-                "its own time, like seasons changing. Be gentle with yourself today."
-            ),
-            "aussie.wav": (
-                "Crikey! Would you look at this beauty right here? Absolutely magnificent. "
-                "Now I'm gonna get nice and close, but very gentle, very respectful. She's not "
-                "aggressive, just misunderstood."
-            ),
-        }
 
     def load(self) -> None:
         last_err = None
@@ -184,9 +169,6 @@ class Qwen3TTS:
         if not ref_audio_path:
             return None
         p = Path(ref_audio_path)
-        mapped = self.ref_text_map.get(p.name.lower())
-        if mapped:
-            return mapped
 
         # Optional sidecar transcript: same filename with .txt extension
         sidecar = p.with_suffix(".txt")

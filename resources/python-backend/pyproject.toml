@@ -1,7 +1,7 @@
 [project]
 name = "elato-server"
 version = "0.1.0"
-description = "ELATO - Where Toys Come Alive"
+description = "ELATO - Open Toys for All"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 license = { text = "MIT" }
@@ -10,7 +10,7 @@ authors = [{ name = "ElatoAI, Akashdeep Deb" }]
 dependencies = [
     "mlx==0.31.0",
     "mlx-lm==0.31.0",
-    "mlx-vlm==0.3.12",
+    "mlx-vlm==0.4.0",
     "mlx-audio[stt,tts]==0.4.0",
     "einops>=0.8.1",
     "transformers==5.1.0",
@@ -21,11 +21,11 @@ dependencies = [
     "soxr",
     "numpy",
     "numba",
-    "webrtcvad",
+    "webrtcvad-wheels==2.0.14",
     "uvicorn[standard]==0.40.0",
     "fastapi==0.127.0",
     "huggingface-hub==1.6.0",
-    "esptool==5.1.0",
+    "esptool==5.2.0",
     "pyserial==3.5",
     "av>=16.0.0",
     "zeroconf>=0.136.0",

@@ -8,6 +8,10 @@ export const SETUP_COPY = {
   durationBlurb: "This step takes ~1 minute.",
   activeStepPreparing: "Preparing your AI engine",
   activeStepDownloadingPython: "Downloading Python runtime",
-  activeStepTeaching: "Downloading dependencies",
+  activeStepDownloadingPackages: "Installing Python packages",
+  activeStepDownloadingModels: "Downloading AI models",
+  activeStepPermissions: "Requesting permissions",
+  activeStepStarting: "Starting local backend",
+  activeStepFinalizing: "Finalizing setup",
   toastComplete: "Setup complete",
 };

@@ -301,7 +301,16 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
       });
     } catch (e: any) {
-      setError(e?.message || "Failed to access microphone");
+      const name = String(e?.name || "");
+      if (name === "NotAllowedError" || name === "SecurityError") {
+        setError("Microphone access was denied. Enable microphone access for OpenToys and try again.");
+      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+        setError("No microphone was found. Connect a microphone and try again.");
+      } else if (name === "NotReadableError" || name === "TrackStartError") {
+        setError("Microphone is unavailable because another app is using it.");
+      } else {
+        setError(e?.message || "Failed to access microphone");
+      }
       return;
     }
     mediaStreamRef.current = mediaStream;
@@ -401,6 +410,7 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
     isRecordingRef.current = true;
     setIsRecording(true);
   };
+
 
   const disconnect = () => {
     if (connectTimeoutRef.current) {

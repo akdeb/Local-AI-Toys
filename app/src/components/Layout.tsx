@@ -348,6 +348,11 @@ const LayoutInner = () => {
                   </div>
                 </div>
               </div>
+              {voiceWs.error && (
+                <div className="mt-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2 font-mono text-xs text-red-700">
+                  {voiceWs.error}
+                </div>
+              )}
             </div>
           </div>
         )}

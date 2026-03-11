@@ -4,5 +4,12 @@
   <dict>
     <key>NSMicrophoneUsageDescription</key>
     <string>This app needs microphone access for voice chat.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>This app needs local network access to discover and talk to toys on your Wi-Fi.</string>
+    <key>NSBonjourServices</key>
+    <array>
+      <string>_elato._tcp</string>
+      <string>_http._tcp</string>
+    </array>
   </dict>
 </plist>

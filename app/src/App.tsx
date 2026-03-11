@@ -9,7 +9,6 @@ import { Settings } from "./pages/Settings";
 import { TestPage } from "./pages/Test";
 import { ChatModePage } from "./pages/ChatMode";
 import { SetupPage } from "./pages/Setup";
-import { ModelSetupPage } from "./pages/ModelSetup";
 import { VoicesPage } from "./pages/Voices";
 import { api } from "./api";
 import { STARTUP_DEFAULT_MESSAGE } from "./constants";
@@ -23,6 +22,7 @@ function SetupGate() {
 
   useEffect(() => {
     let cancelled = false;
+
     const checkFirstLaunch = async () => {
       try {
         const isFirst = await invoke<boolean>("is_first_launch");
@@ -36,7 +36,19 @@ function SetupGate() {
     };
     checkFirstLaunch();
 
-    // If setup is complete, wait until DB seeding + model pipeline init are complete.
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (checking || needsSetup) {
+      return;
+    }
+
+    let cancelled = false;
+    let bootKickAttempted = false;
+
     const waitForBackend = async () => {
       while (!cancelled) {
         try {
@@ -44,29 +56,43 @@ function SetupGate() {
           if (!cancelled) {
             const counts = st?.counts || {};
             if (!st?.seeded) {
-              setStartupMsg(`Seeding database... (voices: ${counts.voices ?? 0}, personalities: ${counts.personalities ?? 0})`);
+              setStartupMsg(
+                `Seeding database... (voices: ${counts.voices ?? 0}, personalities: ${counts.personalities ?? 0})`,
+              );
             } else if (!st?.pipeline_ready) {
               setStartupMsg("Starting AI engine...");
             } else {
               setStartupMsg("Ready");
             }
           }
+
           if (st?.ready) {
             if (!cancelled) setBackendReady(true);
             return;
           }
         } catch {
+          if (!bootKickAttempted) {
+            bootKickAttempted = true;
+            try {
+              await invoke("start_backend");
+            } catch {
+              // Keep polling; setup gate stays on loading until backend is reachable.
+            }
+          }
+
           if (!cancelled) setStartupMsg(STARTUP_DEFAULT_MESSAGE);
         }
+
         await new Promise((r) => setTimeout(r, 500));
       }
     };
+
     waitForBackend();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [checking, needsSetup]);
 
   if (checking) {
     return (
@@ -107,7 +133,6 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/setup" element={<SetupPage />} />
-          <Route path="/model-setup" element={<ModelSetupPage />} />
 
           <Route path="/" element={<SetupGate />}>
             <Route index element={<Playground />} />

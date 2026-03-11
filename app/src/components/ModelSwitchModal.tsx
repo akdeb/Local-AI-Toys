@@ -1,4 +1,4 @@
-import { Loader2, Download, CheckCircle2, AlertCircle, Brain } from "lucide-react";
+import { Loader2, Download, AlertCircle, Check } from "lucide-react";
 
 type Stage = "downloading" | "loading" | "complete" | "error";
 
@@ -8,6 +8,9 @@ interface ModelSwitchModalProps {
   progress: number;
   message: string;
   error?: string;
+  title?: string;
+  downloadingLabel?: string;
+  loadingLabel?: string;
   onRetry?: () => void;
   onClose?: () => void;
 }
@@ -18,6 +21,9 @@ export const ModelSwitchModal = ({
   progress,
   message,
   error,
+  title = "Switching Model",
+  downloadingLabel = "Downloading Model",
+  loadingLabel = "Loading Weights",
   onRetry,
   onClose,
 }: ModelSwitchModalProps) => {
@@ -30,12 +36,8 @@ export const ModelSwitchModal = ({
       <div className="bg-[var(--color-retro-bg)] border-4 border-black rounded-2xl p-8 max-w-md w-full mx-4 retro-shadow">
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
-          <div className="p-3 bg-purple-100 rounded-xl border-2 border-black">
-            <Brain className="w-6 h-6 text-purple-600" />
-          </div>
           <div>
-            <h2 className="text-xl font-black uppercase tracking-wide">Switching Model</h2>
-            <p className="text-xs text-gray-500 font-mono">Please wait, do not close the app</p>
+            <h2 className="text-xl font-black uppercase tracking-wide">{title}</h2>
           </div>
         </div>
 
@@ -46,18 +48,18 @@ export const ModelSwitchModal = ({
             {stage === "downloading" && (
               <>
                 <Download className="w-5 h-5 text-blue-600 animate-bounce" />
-                <span className="font-bold text-blue-600 uppercase text-sm">Downloading Model</span>
+                <span className="font-bold text-blue-600 uppercase text-sm">{downloadingLabel}</span>
               </>
             )}
             {stage === "loading" && (
               <>
                 <Loader2 className="w-5 h-5 text-purple-600 animate-spin" />
-                <span className="font-bold text-purple-600 uppercase text-sm">Loading Weights</span>
+                <span className="font-bold text-purple-600 uppercase text-sm">{loadingLabel}</span>
               </>
             )}
             {stage === "complete" && (
               <>
-                <CheckCircle2 className="w-5 h-5 text-green-600" />
+                <Check className="w-5 h-5 text-green-600" />
                 <span className="font-bold text-green-600 uppercase text-sm">Complete!</span>
               </>
             )}
@@ -82,7 +84,7 @@ export const ModelSwitchModal = ({
           )}
 
           {/* Message */}
-          <div className="bg-white border-2 border-black rounded-xl p-4">
+          <div className="rounded-xl p-4">
             <p className="font-mono text-sm text-gray-700">
               {error || message || "Processing..."}
             </p>

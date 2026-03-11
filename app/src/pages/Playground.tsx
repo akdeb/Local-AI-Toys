@@ -13,7 +13,7 @@ type ExperienceType = 'personality' | 'game' | 'story';
 
 export const Playground = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab: ExperienceType = 'story';
+  const activeTab: ExperienceType = 'personality';
   const [bedtimeMode, setBedtimeMode] = useState(false);
   
   const [experiences, setExperiences] = useState<any[]>([]);

@@ -1,4 +1,4 @@
-from .firmware import firmware_bin_path, list_serial_ports, run_firmware_flash
+from .firmware import firmware_bin_path, list_serial_ports, prepare_firmware_images, run_firmware_flash
 from .mdns import MdnsService
 from .network import get_local_ip
 from .pipeline import VoicePipeline
@@ -13,6 +13,7 @@ __all__ = [
     "firmware_bin_path",
     "get_local_ip",
     "list_serial_ports",
+    "prepare_firmware_images",
     "resolve_voice_ref_audio_path",
     "resolve_voice_ref_text",
     "run_firmware_flash",

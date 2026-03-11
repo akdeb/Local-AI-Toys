@@ -356,4 +356,95 @@ export const api = {
       }
     }
   },
+
+  switchTts: async function* (ttsBackend: "chatterbox-turbo" | "qwen3-tts"): AsyncGenerator<{
+    stage: "downloading" | "loading" | "complete" | "error";
+    progress?: number;
+    message?: string;
+    error?: string;
+  }> {
+    const res = await fetch(`${API_BASE}/models/switch-tts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tts_backend: ttsBackend }),
+    });
+
+    // Backward-compatible fallback for older backends that don't expose /models/switch-tts yet.
+    if (res.status === 404) {
+      try {
+        yield {
+          stage: "downloading",
+          progress: 0.1,
+          message: "Preparing voice engine...",
+        };
+        yield {
+          stage: "loading",
+          progress: 0.4,
+          message: "Applying voice engine...",
+        };
+        await request(`/settings/tts_backend`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value: ttsBackend }),
+        });
+        yield {
+          stage: "loading",
+          progress: 1.0,
+          message: "Voice engine loaded!",
+        };
+        yield {
+          stage: "complete",
+          progress: 1.0,
+          message: `Switched to ${ttsBackend}`,
+        };
+      } catch (e: any) {
+        yield {
+          stage: "error",
+          error: e?.message || "Failed to switch TTS backend",
+        };
+      }
+      return;
+    }
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      yield { stage: "error", error: text || `Request failed: ${res.status}` };
+      return;
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) {
+      yield { stage: "error", error: "No response body" };
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          yield JSON.parse(line);
+        } catch {
+          // Skip malformed lines
+        }
+      }
+    }
+
+    if (buffer.trim()) {
+      try {
+        yield JSON.parse(buffer);
+      } catch {
+        // Skip malformed data
+      }
+    }
+  },
 };

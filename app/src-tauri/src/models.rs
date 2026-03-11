@@ -9,9 +9,9 @@ use tauri::{AppHandle, Emitter};
 
 use crate::paths::get_venv_python;
 
-const STT: &str = "mlx-community/whisper-large-v3-turbo";
+const STT: &str = "mlx-community/whisper-large-v3-turbo-asr-fp16";
 const LLM: &str = "mlx-community/Ministral-3-3B-Instruct-2512-4bit";
-const TTS: &str = "mlx-community/chatterbox-turbo-fp16";
+const TTS: &str = "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-4bit";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelInfo {
@@ -116,7 +116,7 @@ pub async fn check_models_status(_app: AppHandle) -> Result<ModelStatus, String>
         },
         ModelInfo {
             id: "tts".to_string(),
-            name: "Chatterbox TTS Turbo (FP16)".to_string(),
+            name: "Qwen3-TTS 0.6B (4bit)".to_string(),
             model_type: "tts".to_string(),
             repo_id: TTS.to_string(),
             downloaded: false,

@@ -166,6 +166,31 @@ export const ModelSetupPage = () => {
 
   const handleContinue = async () => {
     try {
+      // Request permissions as part of first-run setup.
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((t) => t.stop());
+      } catch (e: any) {
+        const name = String(e?.name || "");
+        if (name === "NotAllowedError" || name === "SecurityError") {
+          setError("Microphone permission was denied. Enable Microphone for OpenToys in Settings > Permissions, then continue.");
+          return;
+        }
+        setError(e?.message || "Failed to request microphone permission.");
+        return;
+      }
+
+      try {
+        await invoke("trigger_local_network_prompt");
+      } catch {
+        // Non-fatal.
+      }
+      try {
+        await invoke("open_system_permission", { kind: "local-network" });
+      } catch {
+        // Non-fatal: user can enable from Settings page.
+      }
+
       setProgress(STARTUP_DEFAULT_MESSAGE);
       await invoke("start_backend");
       await invoke("mark_setup_complete");

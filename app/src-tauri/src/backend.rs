@@ -11,6 +11,58 @@ use crate::paths::{get_elato_dir, get_images_dir, get_venv_python, get_voices_di
 
 pub struct ApiProcess(pub Mutex<Option<Child>>);
 
+fn resolve_python_backend_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let backend_dir = if cfg!(debug_assertions) {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let repo_root = manifest_dir
+            .parent()
+            .and_then(|p| p.parent())
+            .ok_or_else(|| "Failed to resolve repo root from CARGO_MANIFEST_DIR".to_string())?;
+        repo_root.join("resources").join("python-backend")
+    } else {
+        app.path()
+            .resource_dir()
+            .map_err(|e| format!("Failed to resolve app resource dir: {e}"))?
+            .join("python-backend")
+    };
+
+    if !backend_dir.join("server.py").exists() {
+        return Err(format!(
+            "python-backend resources not found at deterministic path: {}",
+            backend_dir.display()
+        ));
+    }
+
+    Ok(backend_dir)
+}
+
+fn resolve_firmware_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let firmware_dir = if cfg!(debug_assertions) {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let repo_root = manifest_dir
+            .parent()
+            .and_then(|p| p.parent())
+            .ok_or_else(|| "Failed to resolve repo root from CARGO_MANIFEST_DIR".to_string())?;
+        repo_root.join("resources").join("firmware")
+    } else {
+        app.path()
+            .resource_dir()
+            .map_err(|e| format!("Failed to resolve app resource dir: {e}"))?
+            .join("firmware")
+    };
+
+    Ok(firmware_dir)
+}
+
+fn resolve_arduino_dir() -> Option<PathBuf> {
+    if !cfg!(debug_assertions) {
+        return None;
+    }
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = manifest_dir.parent().and_then(|p| p.parent())?;
+    Some(repo_root.join("arduino"))
+}
+
 pub fn ensure_port_free(port: u16) {
     let addr = ("127.0.0.1", port);
 
@@ -80,31 +132,17 @@ pub async fn start_backend(app: AppHandle) -> Result<String, String> {
         return Err("Python environment not ready".to_string());
     }
 
-    let python_dir = {
-        let resource_dir = app.path().resource_dir().ok();
-        let bundled_path = resource_dir.as_ref().map(|r| r.join("python-backend"));
-        if bundled_path.as_ref().map(|p| p.exists()).unwrap_or(false) {
-            bundled_path.unwrap()
-        } else {
-            let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            manifest_dir
-                .parent()
-                .unwrap()
-                .parent()
-                .unwrap()
-                .join("resources")
-                .join("python-backend")
-        }
-    };
+    let python_dir = resolve_python_backend_dir(&app)?;
 
     let elato_db_path = get_elato_dir(&app).join("elato.db");
     let elato_voices_dir = get_voices_dir(&app);
     let elato_images_dir = get_images_dir(&app);
+    let firmware_dir = resolve_firmware_dir(&app)?;
 
     ensure_port_free(8000);
 
-    let child = Command::new(&venv_python)
-        .arg("-m")
+    let mut cmd = Command::new(&venv_python);
+    cmd.arg("-m")
         .arg("uvicorn")
         .arg("server:app")
         .arg("--host")
@@ -121,11 +159,17 @@ pub async fn start_backend(app: AppHandle) -> Result<String, String> {
             "ELATO_IMAGES_DIR",
             elato_images_dir.to_string_lossy().to_string(),
         )
+        .env("ELATO_FIRMWARE_DIR", firmware_dir.to_string_lossy().to_string())
         .env("TOKENIZERS_PARALLELISM", "false")
         .env("HF_HUB_DISABLE_XET", "1")
         .env("HF_HUB_ENABLE_HF_TRANSFER", "1")
         .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::inherit());
+    if let Some(arduino_dir) = resolve_arduino_dir() {
+        cmd.env("ELATO_ARDUINO_DIR", arduino_dir.to_string_lossy().to_string());
+    }
+
+    let child = cmd
         .spawn()
         .map_err(|e| format!("Failed to start backend: {e}"))?;
 
@@ -141,20 +185,11 @@ pub fn setup_backend(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Err
     let app_handle = app.handle();
     let venv_python = get_venv_python(&app_handle);
 
-    let python_dir = {
-        let resource_dir = app.path().resource_dir().ok();
-        let bundled_backend = resource_dir.as_ref().map(|r| r.join("python-backend"));
-
-        if bundled_backend
-            .as_ref()
-            .map(|p| p.exists())
-            .unwrap_or(false)
-        {
-            bundled_backend.unwrap()
-        } else {
-            let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            let repo_root = manifest_dir.parent().unwrap().parent().unwrap();
-            repo_root.join("resources").join("python-backend")
+    let python_dir = match resolve_python_backend_dir(&app_handle) {
+        Ok(path) => path,
+        Err(e) => {
+            eprintln!("[TAURI] {}", e);
+            return Ok(());
         }
     };
 
@@ -173,9 +208,10 @@ pub fn setup_backend(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Err
     let elato_voices_dir = get_voices_dir(&app_handle);
     let elato_images_dir = get_images_dir(&app_handle);
     println!("[TAURI] DB Path: {:?}", elato_db_path);
+    let firmware_dir = resolve_firmware_dir(&app_handle)?;
 
-    let child = Command::new(&python_path)
-        .arg("-m")
+    let mut cmd = Command::new(&python_path);
+    cmd.arg("-m")
         .arg("uvicorn")
         .arg("server:app")
         .arg("--host")
@@ -192,12 +228,17 @@ pub fn setup_backend(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Err
             "ELATO_IMAGES_DIR",
             elato_images_dir.to_string_lossy().to_string(),
         )
+        .env("ELATO_FIRMWARE_DIR", firmware_dir.to_string_lossy().to_string())
         .env("TOKENIZERS_PARALLELISM", "false")
         .env("HF_HUB_DISABLE_XET", "1")
         .env("HF_HUB_ENABLE_HF_TRANSFER", "1")
         .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .spawn();
+        .stderr(Stdio::inherit());
+    if let Some(arduino_dir) = resolve_arduino_dir() {
+        cmd.env("ELATO_ARDUINO_DIR", arduino_dir.to_string_lossy().to_string());
+    }
+
+    let child = cmd.spawn();
 
     match child {
         Ok(child) => {

@@ -1,8 +1,10 @@
 mod backend;
 mod models;
+mod permissions;
 mod paths;
 mod python_setup;
 mod setup;
+mod system;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -23,7 +25,10 @@ pub fn run() {
             models::download_all_models,
             setup::mark_setup_complete,
             setup::is_first_launch,
-            backend::start_backend
+            backend::start_backend,
+            permissions::open_system_permission,
+            permissions::trigger_local_network_prompt,
+            system::get_system_profile
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

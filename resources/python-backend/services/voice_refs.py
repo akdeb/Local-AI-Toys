@@ -1,9 +1,15 @@
 import os
 import json
+import logging
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Optional
 
 VOICE_TRANSCRIPT_CACHE: dict[str, str] | None = None
+logger = logging.getLogger(__name__)
+
+VOICES_JSON_URL = "https://raw.githubusercontent.com/akdeb/open-toys/main/app/src/assets/voices.json"
 
 
 def resolve_voice_ref_audio_path(voice_id: Optional[str]) -> Optional[str]:
@@ -29,19 +35,37 @@ def resolve_voice_ref_text(voice_id: Optional[str]) -> Optional[str]:
     if VOICE_TRANSCRIPT_CACHE is None:
         VOICE_TRANSCRIPT_CACHE = {}
         try:
-            repo_root = Path(__file__).resolve().parents[3]
-            voices_json = repo_root / "app" / "src" / "assets" / "voices.json"
-            if voices_json.exists():
-                payload = json.loads(voices_json.read_text(encoding="utf-8"))
-                if isinstance(payload, list):
-                    for item in payload:
-                        if not isinstance(item, dict):
-                            continue
-                        vid = str(item.get("voice_id") or "").strip()
-                        transcript = str(item.get("transcript") or "").strip()
-                        if vid and transcript:
-                            VOICE_TRANSCRIPT_CACHE[vid] = transcript
-        except Exception:
-            pass
+            # Primary source: canonical voices.json in GitHub.
+            with urllib.request.urlopen(VOICES_JSON_URL, timeout=15) as response:
+                if response.status == 200:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    if isinstance(payload, list):
+                        for item in payload:
+                            if not isinstance(item, dict):
+                                continue
+                            vid = str(item.get("voice_id") or "").strip()
+                            transcript = str(item.get("transcript") or "").strip()
+                            if vid and transcript:
+                                VOICE_TRANSCRIPT_CACHE[vid] = transcript
+        except Exception as e:
+            logger.warning("Failed to load voice transcripts from GitHub: %s", e)
+
+        if not VOICE_TRANSCRIPT_CACHE:
+            # Dev fallback: local asset file.
+            try:
+                repo_root = Path(__file__).resolve().parents[3]
+                voices_json = repo_root / "app" / "src" / "assets" / "voices.json"
+                if voices_json.exists():
+                    payload = json.loads(voices_json.read_text(encoding="utf-8"))
+                    if isinstance(payload, list):
+                        for item in payload:
+                            if not isinstance(item, dict):
+                                continue
+                            vid = str(item.get("voice_id") or "").strip()
+                            transcript = str(item.get("transcript") or "").strip()
+                            if vid and transcript:
+                                VOICE_TRANSCRIPT_CACHE[vid] = transcript
+            except Exception:
+                pass
 
     return VOICE_TRANSCRIPT_CACHE.get(voice_id)

@@ -1,43 +1,19 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
-fn parse_pyproject_dependencies(pyproject: &str) -> Vec<String> {
-    let mut deps: Vec<String> = Vec::new();
-    let mut in_deps = false;
+const EMBEDDED_REQUIREMENTS: &str =
+    include_str!("../../../resources/python-backend/requirements.lock");
 
-    for raw_line in pyproject.lines() {
-        let line = raw_line.trim();
-
-        if !in_deps {
-            if line.starts_with("dependencies") && line.contains('[') {
-                in_deps = true;
-            }
-            continue;
-        }
-
-        if line.starts_with(']') {
-            break;
-        }
-
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-
-        let first_quote = line.find('"');
-        let last_quote = line.rfind('"');
-        if let (Some(a), Some(b)) = (first_quote, last_quote) {
-            if b > a {
-                let dep = line[a + 1..b].trim();
-                if !dep.is_empty() {
-                    deps.push(dep.to_string());
-                }
-            }
-        }
-    }
-
-    deps
+fn parse_requirement_specs(requirements: &str) -> Vec<String> {
+    requirements
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .filter(|line| !line.starts_with('-'))
+        .map(|line| line.to_string())
+        .collect()
 }
 
 fn normalize_dependency_name(spec: &str) -> Option<String> {
@@ -68,37 +44,18 @@ fn normalize_dependency_name(spec: &str) -> Option<String> {
     }
 }
 
-fn resolve_pyproject_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
-
-    let repo_path = repo_root
-        .join("resources")
-        .join("python-backend")
-        .join("pyproject.toml");
-    if repo_path.exists() {
-        return Ok(repo_path);
+fn load_requirements() -> Result<&'static str, String> {
+    if EMBEDDED_REQUIREMENTS.trim().is_empty() {
+        return Err("Embedded requirements.lock is empty".to_string());
     }
-
-    let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
-    Ok(resource_dir.join("python-backend").join("pyproject.toml"))
+    Ok(EMBEDDED_REQUIREMENTS)
 }
 
-pub fn pyproject_dependency_names(app: &AppHandle) -> Result<Vec<String>, String> {
-    let pyproject_path = resolve_pyproject_path(app)?;
-    if !pyproject_path.exists() {
-        return Err(format!(
-            "pyproject.toml not found at {}",
-            pyproject_path.display()
-        ));
-    }
+pub fn pyproject_dependency_names(_app: &AppHandle) -> Result<Vec<String>, String> {
+    let requirements = load_requirements()?;
+    let specs = parse_requirement_specs(requirements);
 
-    let pyproject = std::fs::read_to_string(&pyproject_path)
-        .map_err(|e| format!("Failed to read pyproject.toml: {}", e))?;
-
-    let deps = parse_pyproject_dependencies(&pyproject);
-    let mut out: Vec<String> = deps
+    let mut out: Vec<String> = specs
         .into_iter()
         .filter_map(|dep| normalize_dependency_name(&dep))
         .collect();
@@ -107,7 +64,7 @@ pub fn pyproject_dependency_names(app: &AppHandle) -> Result<Vec<String>, String
     Ok(out)
 }
 
-pub fn install_python_deps(app: &AppHandle, pip_path: PathBuf) -> Result<String, String> {
+pub fn install_python_deps(_app: &AppHandle, pip_path: PathBuf) -> Result<String, String> {
     if !pip_path.exists() {
         return Err("Virtual environment not found. Please create it first.".to_string());
     }
@@ -118,32 +75,19 @@ pub fn install_python_deps(app: &AppHandle, pip_path: PathBuf) -> Result<String,
         .arg("pip")
         .output();
 
-    let pyproject_path = resolve_pyproject_path(app)?;
-    if !pyproject_path.exists() {
-        return Err(format!(
-            "pyproject.toml not found at {}",
-            pyproject_path.display()
-        ));
+    let requirements = load_requirements()?;
+    let specs = parse_requirement_specs(requirements);
+    if specs.is_empty() {
+        return Err("No dependencies found in requirements.lock".to_string());
     }
 
-    let pyproject = std::fs::read_to_string(&pyproject_path)
-        .map_err(|e| format!("Failed to read pyproject.toml: {}", e))?;
-
-    let deps = parse_pyproject_dependencies(&pyproject);
-    if deps.is_empty() {
-        return Err("No dependencies found in pyproject.toml".to_string());
-    }
-
-    // Install mlx-audio without deps to avoid resolver conflicts.
+    // Install mlx-audio without deps to avoid resolver conflicts with mlx family versions.
     let mut mlx_audio_spec: Option<String> = None;
     let mut rest: Vec<String> = Vec::new();
-    for dep in deps {
+    for dep in specs {
         if dep.starts_with("mlx-audio") {
-            // Reject duplicates to avoid ambiguity.
             if mlx_audio_spec.is_some() {
-                return Err(
-                    "Multiple mlx-audio entries found in pyproject.toml dependencies".to_string(),
-                );
+                return Err("Multiple mlx-audio entries found in requirements.lock".to_string());
             }
             mlx_audio_spec = Some(dep);
         } else {
@@ -158,6 +102,7 @@ pub fn install_python_deps(app: &AppHandle, pip_path: PathBuf) -> Result<String,
                 "--upgrade",
                 "--force-reinstall",
                 "--no-deps",
+                "--prefer-binary",
                 &spec,
             ])
             .output()
@@ -172,7 +117,10 @@ pub fn install_python_deps(app: &AppHandle, pip_path: PathBuf) -> Result<String,
     }
 
     let mut cmd = Command::new(pip_path.to_str().unwrap());
-    cmd.arg("install").arg("--upgrade").arg("--force-reinstall");
+    cmd.arg("install")
+        .arg("--upgrade")
+        .arg("--force-reinstall")
+        .arg("--prefer-binary");
     for dep in rest {
         cmd.arg(dep);
     }

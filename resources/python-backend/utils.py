@@ -7,7 +7,7 @@ import numpy as np
 STT = "mlx-community/whisper-large-v3-turbo-asr-fp16"
 LLM = "mlx-community/Ministral-3-3B-Instruct-2512-4bit"
 TTS = "mlx-community/chatterbox-turbo-fp16"
-QWEN3_TTS = "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16"
+QWEN3_TTS = "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-4bit"
 
 # Audio constants matching ESP32 expectations
 OPUS_SAMPLE_RATE = 24000  # 24kHz for TTS output
