@@ -333,7 +333,7 @@ style={{
         </h2>
         <div className="inline-flex items-center gap-3 rounded-full px-3 py-2">
           <span className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-gray-700">
-            <Moon fill="currentColor" size={14} />
+            <Moon fill={bedtimeMode ? "currentColor" : "none"} size={14} />
             Bedtime mode
           </span>
           <button

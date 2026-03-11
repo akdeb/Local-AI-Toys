@@ -97,7 +97,7 @@ function SetupGate() {
   if (checking) {
     return (
       <div className="min-h-screen bg-[var(--color-retro-bg)] flex items-center justify-center">
-        <div className="text-center retro-card">
+<div className="text-center retro-card">
           <Logo />
           <div className="text-gray-500 font-mono">Loading...</div>
         </div>
@@ -111,8 +111,8 @@ function SetupGate() {
 
   if (!backendReady) {
     return (
-      <div className="min-h-screen bg-[var(--color-retro-bg)] flex items-center justify-center">
-        <div className="text-center retro-card">
+      <div className="min-h-screen bg-[var(--color-retro-bg)] flex items-center justify-center">        
+<div className="text-center retro-card">
           
           <Logo />
           <div className="text-gray-500 font-mono">{startupMsg}</div>

@@ -272,6 +272,15 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
     }
   };
 
+  const reconnectForModeChange = () => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    disconnect();
+    window.setTimeout(() => {
+      connect();
+    }, 120);
+  };
+
   const startRecording = async () => {
     if (isBedtimeModeRef.current) {
       stopRecording();
@@ -589,7 +598,11 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
         const res = await api.getAppMode();
         if (!cancelled) {
           const bedtime = (res?.mode || "").toLowerCase() === "bedtime";
+          const prev = isBedtimeModeRef.current;
           applyBedtimeMode(bedtime);
+          if (prev !== bedtime) {
+            reconnectForModeChange();
+          }
         }
       } catch {
         if (!cancelled) applyBedtimeMode(false);
@@ -599,7 +612,11 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
     const onModeChanged = (ev: Event) => {
       const detail = (ev as CustomEvent<{ mode?: string }>).detail;
       const bedtime = (detail?.mode || "").toLowerCase() === "bedtime";
+      const prev = isBedtimeModeRef.current;
       applyBedtimeMode(bedtime);
+      if (prev !== bedtime) {
+        reconnectForModeChange();
+      }
     };
 
     loadMode();

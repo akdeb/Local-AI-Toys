@@ -1,13 +1,61 @@
 import io
+import json
 import os
+import re
 import struct
-from typing import Callable, Optional
+from pathlib import Path
+from typing import Callable, Dict, Optional
 import numpy as np
 
 STT = "mlx-community/whisper-large-v3-turbo-asr-fp16"
 LLM = "mlx-community/Ministral-3-3B-Instruct-2512-4bit"
 TTS = "mlx-community/chatterbox-turbo-fp16"
 QWEN3_TTS = "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-4bit"
+
+# ---------------------------------------------------------------------------
+# LLM / TTS helpers (shared by routes & server)
+# ---------------------------------------------------------------------------
+
+_LLM_PROFILE_CACHE: Dict[str, Dict[str, object]] = {}
+
+
+def load_llm_profiles() -> Dict[str, Dict[str, object]]:
+    if _LLM_PROFILE_CACHE:
+        return _LLM_PROFILE_CACHE
+    repo_root = Path(__file__).resolve().parents[2]
+    llms_path = repo_root / "app" / "src" / "assets" / "llms.json"
+    if not llms_path.exists():
+        return {}
+    try:
+        data = json.loads(llms_path.read_text(encoding="utf-8"))
+        for item in data if isinstance(data, list) else []:
+            if isinstance(item, dict) and isinstance(item.get("repo_id"), str):
+                _LLM_PROFILE_CACHE[item["repo_id"]] = item
+    except Exception:
+        return {}
+    return _LLM_PROFILE_CACHE
+
+
+def is_thinking_model(repo_id: str) -> bool:
+    profile = load_llm_profiles().get(repo_id)
+    return bool(profile and profile.get("thinking"))
+
+
+def normalize_tts_backend(backend: Optional[str]) -> str:
+    value = (backend or "").strip().lower()
+    if value in {"", "qwen3-tts", "qwen3_tts", "qwen3"}:
+        return "qwen3-tts"
+    if value in {"chatterbox", "chatterbox-turbo", "chatterbox_turbo"}:
+        return "chatterbox-turbo"
+    return "qwen3-tts"
+
+
+def strip_thinking(text: str) -> str:
+    if not text:
+        return text
+    cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    cleaned = re.sub(r"</?think>", "", cleaned, flags=re.IGNORECASE)
+    return cleaned.strip()
 
 # Audio constants matching ESP32 expectations
 OPUS_SAMPLE_RATE = 24000  # 24kHz for TTS output
