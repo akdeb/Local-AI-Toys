@@ -15,6 +15,7 @@ export const VoiceClone = ({ open, onClose, onCreated }: Props) => {
   const [cloneFile, setCloneFile] = useState<File | null>(null);
   const [clonePreviewUrl, setClonePreviewUrl] = useState<string | null>(null);
   const [creatingVoice, setCreatingVoice] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const [recording, setRecording] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number>(12);
@@ -30,6 +31,7 @@ export const VoiceClone = ({ open, onClose, onCreated }: Props) => {
   useEffect(() => {
     if (!open) return;
     setSecondsLeft(12);
+    setCreateError(null);
   }, [open]);
 
   useEffect(() => {
@@ -201,6 +203,7 @@ export const VoiceClone = ({ open, onClose, onCreated }: Props) => {
     if (!cloneName.trim()) return;
 
     setCreatingVoice(true);
+    setCreateError(null);
     try {
       const uuid = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : String(Date.now());
       const voiceId = `${slugify(cloneName)}-${uuid}`;
@@ -216,6 +219,16 @@ export const VoiceClone = ({ open, onClose, onCreated }: Props) => {
 
       await onCreated(voiceId);
       onClose();
+    } catch (e: any) {
+      const detail =
+        typeof e === "string"
+          ? e
+          : e?.message
+            ? String(e.message)
+            : e?.toString
+              ? String(e.toString())
+              : "Failed to create voice clone";
+      setCreateError(detail);
     } finally {
       setCreatingVoice(false);
     }
@@ -266,6 +279,9 @@ export const VoiceClone = ({ open, onClose, onCreated }: Props) => {
         </div>
 
         <div className="space-y-4">
+          {createError && (
+            <div className="font-mono text-sm text-red-600">{createError}</div>
+          )}
           <div className="font-mono text-xs text-gray-700">
             Upload or record a clean sample. Best results with: 1. quiet room, 2. steady volume, 3. no background music.
           </div>
@@ -348,6 +364,7 @@ export const VoiceClone = ({ open, onClose, onCreated }: Props) => {
             </div>
           )}
 
+  <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block font-bold mb-2 uppercase text-sm">Name</label>
             <input
@@ -366,6 +383,7 @@ export const VoiceClone = ({ open, onClose, onCreated }: Props) => {
               onChange={(e) => setCloneDesc(e.target.value)}
               placeholder="Bear-like cartoon voice"
             />
+          </div>
           </div>
 
           <div className="flex justify-end">

@@ -30,6 +30,7 @@ class Voice:
     gender: Optional[str]
     voice_name: str
     voice_description: Optional[str]
+    transcript: Optional[str]
     voice_src: Optional[str]
     is_global: bool
     created_at: Optional[float] = None

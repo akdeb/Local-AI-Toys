@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import audioop
 import base64
+import io
 import logging
 import os
 import socket
@@ -11,10 +13,11 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import wave
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 import db_service
@@ -59,6 +62,7 @@ async def get_voices(include_non_global: bool = True):
             "gender": v.gender,
             "voice_name": v.voice_name,
             "voice_description": v.voice_description,
+            "transcript": getattr(v, "transcript", None),
             "voice_src": v.voice_src,
             "is_global": v.is_global,
             "created_at": getattr(v, "created_at", None),
@@ -71,20 +75,71 @@ class VoiceCreate(BaseModel):
     voice_id: str
     voice_name: str
     voice_description: Optional[str] = None
+    transcript: Optional[str] = None
+
+
+def _wav_to_pcm16_16k_mono_bytes(path: Path) -> bytes:
+    raw = path.read_bytes()
+    with wave.open(io.BytesIO(raw), "rb") as wf:
+        channels = wf.getnchannels()
+        sample_width = wf.getsampwidth()
+        sample_rate = wf.getframerate()
+        frames = wf.readframes(wf.getnframes())
+
+    if channels not in (1, 2):
+        raise ValueError(f"Unsupported channel count: {channels}")
+
+    if sample_width != 2:
+        frames = audioop.lin2lin(frames, sample_width, 2)
+
+    if channels == 2:
+        frames = audioop.tomono(frames, 2, 0.5, 0.5)
+
+    if sample_rate != 16000:
+        frames, _ = audioop.ratecv(frames, 2, 1, sample_rate, 16000, None)
+
+    return frames
 
 
 @router.post("/voices")
-async def create_voice(body: VoiceCreate):
+async def create_voice(body: VoiceCreate, request: Request):
+    voice_id = (body.voice_id or "").strip()
+    voice_name = (body.voice_name or "").strip()
+    if not voice_id:
+        raise HTTPException(status_code=400, detail="voice_id is required")
+    if not voice_name:
+        raise HTTPException(status_code=400, detail="voice_name is required")
+
+    transcript = (body.transcript or "").strip()
+    if not transcript:
+        wav_path = _voices_dir() / f"{voice_id}.wav"
+        if not wav_path.exists() or not wav_path.is_file():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Voice WAV not found at {wav_path}",
+            )
+
+        pipeline = getattr(request.app.state, "pipeline", None)
+        if pipeline is None:
+            raise HTTPException(status_code=503, detail="Voice pipeline is not ready")
+
+        try:
+            pcm16 = await asyncio.to_thread(_wav_to_pcm16_16k_mono_bytes, wav_path)
+            transcript = (await pipeline.transcribe(pcm16)).strip()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to transcribe voice sample: {e}")
+
     v = db_service.db_service.upsert_voice(
-        voice_id=body.voice_id, voice_name=body.voice_name,
+        voice_id=voice_id, voice_name=voice_name,
         voice_description=body.voice_description, gender=None,
-        voice_src=None, is_global=False,
+        transcript=transcript, voice_src=None, is_global=False,
     )
     if not v:
         raise HTTPException(status_code=500, detail="Failed to create voice")
     return {
         "voice_id": v.voice_id, "gender": v.gender,
         "voice_name": v.voice_name, "voice_description": v.voice_description,
+        "transcript": getattr(v, "transcript", None),
         "voice_src": v.voice_src, "is_global": v.is_global,
         "created_at": getattr(v, "created_at", None),
     }

@@ -96,6 +96,7 @@ def build_llm_messages(
     max_history_messages: int = 30,
 ) -> List[Dict[str, str]]:
     msgs: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
+    expected_role = "user"
     if history:
         trimmed = history[-max_history_messages:]
         for m in trimmed:
@@ -105,7 +106,18 @@ def build_llm_messages(
                 continue
             if role not in ("user", "assistant"):
                 continue
+            # Normalize to strict alternation required by some chat templates/models.
+            # We intentionally drop out-of-order turns (e.g. leading assistant greeting).
+            if role != expected_role:
+                continue
             msgs.append({"role": role, "content": content})
+            expected_role = "assistant" if expected_role == "user" else "user"
+
+    # Never send consecutive user turns to the model. If history currently ends
+    # on a user turn (common right after STT is persisted), drop trailing user
+    # entries and treat this request as the current user input.
+    while len(msgs) > 1 and msgs[-1].get("role") == "user":
+        msgs.pop()
 
     msgs.append({"role": "user", "content": user_text})
     return msgs

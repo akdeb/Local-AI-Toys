@@ -70,12 +70,13 @@ class SeedMixin:
                     continue
                 cursor.execute(
                     """
-                    INSERT INTO voices (voice_id, gender, voice_name, voice_description, voice_src, is_global, created_at)
-                    VALUES (?, ?, ?, ?, ?, 1, ?)
+                    INSERT INTO voices (voice_id, gender, voice_name, voice_description, transcript, voice_src, is_global, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, 1, ?)
                     ON CONFLICT(voice_id) DO UPDATE SET
                       gender = excluded.gender,
                       voice_name = excluded.voice_name,
                       voice_description = excluded.voice_description,
+                      transcript = excluded.transcript,
                       voice_src = excluded.voice_src,
                       is_global = excluded.is_global,
                       created_at = COALESCE(voices.created_at, excluded.created_at)
@@ -85,6 +86,7 @@ class SeedMixin:
                         item.get("gender"),
                         str(vname),
                         item.get("voice_description") or item.get("description"),
+                        item.get("transcript"),
                         item.get("voice_src") or item.get("src"),
                         time.time(),
                     ),

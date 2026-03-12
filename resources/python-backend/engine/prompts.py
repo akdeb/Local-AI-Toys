@@ -16,7 +16,8 @@ def build_behavior_constraints(
 ) -> str:
     parts: list[str] = [
         "You always respond with spoken-friendly sentences. "
-        "Do not use Markdown formatting (no *, **, _, __, backticks)."
+        "Do not use Markdown formatting (no *, **, _, __, backticks). "
+        "Do not use emojis."
     ]
 
     if tts_backend == "chatterbox-turbo":
@@ -27,10 +28,14 @@ def build_behavior_constraints(
             "Examples: [chuckle] That is funny. [sigh] That was a long day."
         )
 
-    if experience_type == "game":
+    if is_bedtime:
+        parts.append(_bedtime_constraints())
+    elif experience_type == "game":
         parts.append(_game_constraints(personality_name))
     elif experience_type == "story":
-        parts.append(_bedtime_constraints() if is_bedtime else _story_constraints())
+        parts.append(_story_constraints())
+    else:
+        parts.append(_conversation_constraints(tts_backend=tts_backend))
 
     if thinking_model:
         parts.append("Do not output <think> or reasoning text. Respond with the final answer only.")
@@ -82,6 +87,23 @@ def _bedtime_constraints() -> str:
         "Keep sentences short, warm, and simple. Avoid scary or complex themes. "
         "Write as a narrated scene, not as a summary. "
         "Use natural pauses with occasional ellipses (...) and varied sentence lengths for expressive TTS delivery."
+    )
+
+
+def _conversation_constraints(*, tts_backend: str) -> str:
+    base = (
+        "You are in normal conversation mode. Respond as direct spoken dialogue only. "
+        "Do not narrate scenes, actions, environments, or camera-like descriptions. "
+        "Do not write prose stage directions like 'chuckles softly' or 'I pause'. "
+        "Do not write long quoted monologues. "
+        "Use short, natural, back-and-forth conversational sentences."
+    )
+    if tts_backend == "chatterbox-turbo":
+        return (
+            base + " If you use paralinguistic cues, use ONLY bracketed tags from the allowed list."
+        )
+    return (
+        base + " Do not use any paralinguistic cues or tags (no bracketed cues like [laugh])."
     )
 
 

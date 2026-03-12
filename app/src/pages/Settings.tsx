@@ -639,7 +639,7 @@ export const Settings = () => {
             </div>
           </div>
           {permissionFeedback && (
-            <div className="text-xs font-mono text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+            <div className="text-xs font-mono text-gray-600  py-2">
               {permissionFeedback}
             </div>
           )}

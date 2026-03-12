@@ -10,6 +10,7 @@ type VoiceMsg =
   | { type: "response"; text: string }
   | { type: "audio"; data: string }
   | { type: "audio_end" }
+  | { type: "ready_for_input" }
   | { type: "error"; message: string }
   | { type: "session_started"; session_id: string };
 
@@ -58,6 +59,7 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
   const [characterName, setCharacterName] = useState<string>("—");
   const [characterId, setCharacterId] = useState<string | null>(null);
   const [characterImageSrc, setCharacterImageSrc] = useState<string | null>(null);
+  const appModeBedtimeRef = useRef(false);
   const [configReady, setConfigReady] = useState<boolean>(false);
 
   const [isRecording, setIsRecording] = useState(false);
@@ -67,6 +69,7 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
   const [isBedtimeMode, setIsBedtimeMode] = useState(false);
   const lastLevelAtRef = useRef<number>(0);
   const isBedtimeModeRef = useRef(false);
+  const micEnabledRef = useRef(false);
 
   const [latestSessionId, setLatestSessionId] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
@@ -186,6 +189,10 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
               setTimeout(() => {
                 stopTtsPlayback();
                 awaitingResumeRef.current = false;
+                if (isBedtimeModeRef.current || !micEnabledRef.current) {
+                  stopRecording();
+                  return;
+                }
                 // Start recording if not already started (first time after greeting)
                 if (!autoStartedMicRef.current) {
                   autoStartedMicRef.current = true;
@@ -266,11 +273,14 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
 
   const applyBedtimeMode = (next: boolean) => {
     isBedtimeModeRef.current = next;
+    micEnabledRef.current = !next;
     setIsBedtimeMode(next);
     if (next && isRecordingRef.current) {
       stopRecording();
     }
   };
+
+  const effectiveBedtimeMode = () => appModeBedtimeRef.current;
 
   const reconnectForModeChange = () => {
     const ws = wsRef.current;
@@ -282,7 +292,7 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
   };
 
   const startRecording = async () => {
-    if (isBedtimeModeRef.current) {
+    if (isBedtimeModeRef.current || !micEnabledRef.current) {
       stopRecording();
       return;
     }
@@ -461,6 +471,8 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
 
     setError(null);
     setStatus("connecting");
+    // Wait for authoritative server mode message before enabling mic.
+    micEnabledRef.current = false;
 
     let ws: WebSocket;
     try {
@@ -533,8 +545,8 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
           if (msg.data) {
             enqueueTtsChunk(msg.data);
           }
-        } else if (msg.type === "audio_end") {
-          if (isBedtimeModeRef.current) {
+        } else if (msg.type === "audio_end" || msg.type === "ready_for_input") {
+          if (isBedtimeModeRef.current || !micEnabledRef.current) {
             awaitingResumeRef.current = false;
             stopRecording();
             return;
@@ -583,6 +595,7 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
           setError(msg.message || "Unknown error");
         } else if ((msg as any).type === "bedtime_mode") {
           const micEnabled = Boolean((msg as any).mic_enabled);
+          micEnabledRef.current = micEnabled;
           applyBedtimeMode(!micEnabled);
         }
       } catch {
@@ -597,7 +610,8 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
       try {
         const res = await api.getAppMode();
         if (!cancelled) {
-          const bedtime = (res?.mode || "").toLowerCase() === "bedtime";
+          appModeBedtimeRef.current = (res?.mode || "").toLowerCase() === "bedtime";
+          const bedtime = effectiveBedtimeMode();
           const prev = isBedtimeModeRef.current;
           applyBedtimeMode(bedtime);
           if (prev !== bedtime) {
@@ -611,7 +625,8 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
 
     const onModeChanged = (ev: Event) => {
       const detail = (ev as CustomEvent<{ mode?: string }>).detail;
-      const bedtime = (detail?.mode || "").toLowerCase() === "bedtime";
+      appModeBedtimeRef.current = (detail?.mode || "").toLowerCase() === "bedtime";
+      const bedtime = effectiveBedtimeMode();
       const prev = isBedtimeModeRef.current;
       applyBedtimeMode(bedtime);
       if (prev !== bedtime) {
@@ -653,6 +668,14 @@ export const VoiceWsProvider = ({ children }: { children: React.ReactNode }) => 
           setCharacterId(null);
         }
       } finally {
+        if (!cancelled) {
+          const bedtime = effectiveBedtimeMode();
+          const prev = isBedtimeModeRef.current;
+          applyBedtimeMode(bedtime);
+          if (prev !== bedtime) {
+            reconnectForModeChange();
+          }
+        }
         if (!cancelled) setConfigReady(true);
       }
     };

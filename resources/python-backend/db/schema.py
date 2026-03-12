@@ -16,6 +16,7 @@ def init_schema(conn: Connection) -> None:
           gender TEXT,
           voice_name TEXT NOT NULL,
           voice_description TEXT,
+          transcript TEXT,
           voice_src TEXT,
           is_global BOOLEAN DEFAULT 0,
           created_at REAL

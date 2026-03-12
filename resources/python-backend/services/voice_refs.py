@@ -12,14 +12,26 @@ logger = logging.getLogger(__name__)
 VOICES_JSON_URL = "https://raw.githubusercontent.com/akdeb/open-toys/main/app/src/assets/voices.json"
 
 
+def _default_app_data_dir() -> Path:
+    db_path = os.environ.get("ELATO_DB_PATH")
+    if db_path:
+        return Path(db_path).expanduser().resolve().parent
+    try:
+        from db.paths import default_db_path
+        return Path(default_db_path()).expanduser().resolve().parent
+    except Exception:
+        return Path.cwd()
+
+
+def _voices_dir() -> Path:
+    return Path(os.environ.get("ELATO_VOICES_DIR") or _default_app_data_dir().joinpath("voices"))
+
+
 def resolve_voice_ref_audio_path(voice_id: Optional[str]) -> Optional[str]:
     if not voice_id:
         return None
-    voices_dir = os.environ.get("ELATO_VOICES_DIR")
-    if not voices_dir:
-        return None
     try:
-        path = Path(voices_dir).joinpath(f"{voice_id}.wav")
+        path = _voices_dir().joinpath(f"{voice_id}.wav")
         if path.exists() and path.is_file():
             return str(path)
     except Exception:
@@ -30,6 +42,17 @@ def resolve_voice_ref_audio_path(voice_id: Optional[str]) -> Optional[str]:
 def resolve_voice_ref_text(voice_id: Optional[str]) -> Optional[str]:
     if not voice_id:
         return None
+
+    # Deterministic source of truth: DB (covers both global and user-created voices).
+    try:
+        import db_service
+
+        v = db_service.db_service.get_voice(voice_id)
+        t = (getattr(v, "transcript", None) or "").strip() if v else ""
+        if t:
+            return t
+    except Exception:
+        pass
 
     global VOICE_TRANSCRIPT_CACHE
     if VOICE_TRANSCRIPT_CACHE is None:

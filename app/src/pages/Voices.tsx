@@ -2,9 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Plus } from "lucide-react";
-import { Modal } from "../components/Modal";
 import { ExperienceModal } from "../components/ExperienceModal";
-import { CreateTiles, type CreateTileKind } from "../components/CreateTiles";
 import { VoiceActionButtons } from "../components/VoiceActionButtons";
 import { useVoicePlayback } from "../hooks/useVoicePlayback";
 import { VoiceClone } from "../components/VoiceClone";
@@ -34,7 +32,6 @@ export const VoicesPage = () => {
   const [createVoiceOpen, setCreateVoiceOpen] = useState(false);
 
   const [createStartOpen, setCreateStartOpen] = useState(false);
-  const [createExperienceOpen, setCreateExperienceOpen] = useState(false);
   const [createExperienceType, setCreateExperienceType] = useState<"personality" | "game" | "story">("personality");
   const [createExperienceVoiceId, setCreateExperienceVoiceId] = useState<string | null>(null);
   const [createExperienceVoiceName, setCreateExperienceVoiceName] = useState<string | null>(null);
@@ -165,34 +162,19 @@ export const VoicesPage = () => {
         <h2 className="text-3xl font-black">VOICES</h2>
       </div>
 
-      <Modal
-        open={createStartOpen}
-        icon={<Plus size={20} />}
-        title={`Create AI with ${createExperienceVoiceName || "this"} voice`}
-        onClose={() => setCreateStartOpen(false)}
-        panelClassName="w-full max-w-3xl"
-      >
-        <CreateTiles
-          includeVoice={false}
-          onSelect={(kind: CreateTileKind) => {
-            if (kind === "voice") return;
-            const nextType = kind === "character" ? "personality" : kind;
-            setCreateExperienceType(nextType);
-            setCreateStartOpen(false);
-            setCreateExperienceOpen(true);
-          }}
-        />
-      </Modal>
-
       <ExperienceModal
-        open={createExperienceOpen}
+        open={createStartOpen}
         mode="create"
         experienceType={createExperienceType}
         createVoiceId={createExperienceVoiceId}
         createVoiceName={createExperienceVoiceName}
-        onClose={() => setCreateExperienceOpen(false)}
+        onClose={() => {
+          setCreateExperienceType("personality");
+          setCreateExperienceVoiceId(createExperienceVoiceId);
+          setCreateExperienceVoiceName(createExperienceVoiceName);
+          setCreateStartOpen(false);
+        }}
         onSuccess={async () => {
-          setCreateExperienceOpen(false);
           navigate('/');
         }}
       />
@@ -246,6 +228,11 @@ export const VoicesPage = () => {
                 <p className="text-gray-600 text-xs font-medium mt-2">
                   {v.voice_description ? v.voice_description : "—"}
                 </p>
+                {v.transcript ? (
+                  <blockquote className="mt-2 pl-3 border-l-2 border-gray-300 font-mono text-xs text-gray-400 italic">
+                    {String(v.transcript)}
+                  </blockquote>
+                ) : null}
               </div>
 
               <div className="shrink-0 pt-1">

@@ -5,6 +5,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::Duration;
 
+use base64::Engine;
 use tauri::{AppHandle, Manager};
 
 use crate::paths::{get_elato_dir, get_images_dir, get_venv_python, get_voices_dir};
@@ -251,4 +252,42 @@ pub fn setup_backend(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Err
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn save_voice_wav_base64(
+    app: AppHandle,
+    voice_id: String,
+    base64_wav: String,
+) -> Result<String, String> {
+    let voice_id = voice_id.trim();
+    if voice_id.is_empty() {
+        return Err("voice_id is required".to_string());
+    }
+    if !voice_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err("voice_id contains invalid characters".to_string());
+    }
+
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(base64_wav.trim())
+        .map_err(|e| format!("Invalid base64 audio data: {e}"))?;
+
+    if bytes.len() < 44 {
+        return Err("WAV file too small".to_string());
+    }
+    if &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
+        return Err("Invalid WAV header".to_string());
+    }
+
+    let voices_dir = get_voices_dir(&app);
+    std::fs::create_dir_all(&voices_dir)
+        .map_err(|e| format!("Failed to create voices directory: {e}"))?;
+
+    let out_path = voices_dir.join(format!("{voice_id}.wav"));
+    std::fs::write(&out_path, &bytes).map_err(|e| format!("Failed to write voice WAV: {e}"))?;
+
+    Ok(out_path.to_string_lossy().to_string())
 }

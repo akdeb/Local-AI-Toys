@@ -282,9 +282,7 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
     exp_type = getattr(personality, "type", "personality") if personality else "personality"
 
     def _is_bedtime() -> bool:
-        """True only when app mode is 'bedtime' AND the current experience is a story."""
-        if exp_type != "story":
-            return False
+        """True when app mode is 'bedtime' (global override)."""
         try:
             return (db_service.db_service.get_app_mode() or "").strip().lower() == "bedtime"
         except Exception:
@@ -319,6 +317,31 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
         )
         return build_llm_messages(system_prompt=sys_prompt, history=history, user_text=user_text, max_history_messages=80)
 
+    def _has_prior_history_for_user_and_experience() -> bool:
+        if not user_id or not personality_id:
+            return False
+        try:
+            sessions = db_service.db_service.get_sessions(limit=120, user_id=user_id)
+        except Exception:
+            return False
+
+        for s in sessions:
+            sid = getattr(s, "id", None)
+            if not sid or sid == session_id:
+                continue
+            if getattr(s, "personality_id", None) != personality_id:
+                continue
+            try:
+                convs = db_service.db_service.get_conversations(session_id=sid)
+            except Exception:
+                continue
+            for c in convs:
+                t = (getattr(c, "transcript", "") or "").strip()
+                if not t or t == "[connected]" or t.startswith("[auto-bedtime]"):
+                    continue
+                return True
+        return False
+
     volume = 100
     try:
         raw = db_service.db_service.get_setting("laptop_volume")
@@ -337,6 +360,9 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
             await websocket.send_text(json.dumps({"type": "session_started", "session_id": session_id}))
         except Exception:
             pass
+        # Authoritative per-session mic policy for desktop.
+        with suppress(Exception):
+            await websocket.send_text(json.dumps({"type": "bedtime_mode", "mic_enabled": not _is_bedtime()}))
 
     logger.info(f"{label} Client connected, session={session_id}")
 
@@ -461,6 +487,7 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
                     break
 
     # --- Greeting ---
+    greeting_sent = False
 
     if not _is_bedtime():
         try:
@@ -474,6 +501,7 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
             greeting = sanitize_spoken_text(greeting, allow_paralinguistic=allow_para)
             logger.info(f"{label} Greeting: {greeting}")
             await _emit_ai_turn(greeting, for_esp32=is_esp32)
+            greeting_sent = True
             try:
                 db_service.db_service.log_conversation(role="user", transcript="[connected]", session_id=session_id)
             except Exception:
@@ -484,6 +512,12 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
                 pass
         except Exception as e:
             logger.error(f"{label} Greeting failed: {e}")
+
+    # Desktop client starts mic after a readiness event. Keep this fallback for
+    # safety if greeting generation fails.
+    if not is_esp32 and not _is_bedtime() and not greeting_sent:
+        with suppress(Exception):
+            await websocket.send_text(json.dumps({"type": "ready_for_input"}))
 
     # --- Common state ---
 
@@ -714,7 +748,7 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
     # --- Bedtime autoplay ---
 
     async def _run_bedtime_autoplay(for_esp32: bool):
-        chapter_count = 5
+        chapter_count = 4
         if not for_esp32:
             try:
                 await websocket.send_text(json.dumps({"type": "bedtime_mode", "mic_enabled": False}))

@@ -530,7 +530,7 @@ style={{
               )}
             </div>
 
-                <h3 className="text-lg font-black leading-tight wrap-break-word retro-clamp-2">{p.name}</h3>
+                <h3 className="text-lg font-black leading-tight wrap-break-word w-[96%] retro-clamp-2">{p.name}</h3>
                 <p className="text-gray-600 text-xs font-medium mt-2 retro-clamp-2">
                   {p.short_description ? String(p.short_description) : '—'}
                 </p>

@@ -26,6 +26,7 @@ pub fn run() {
             setup::mark_setup_complete,
             setup::is_first_launch,
             backend::start_backend,
+            backend::save_voice_wav_base64,
             permissions::open_system_permission,
             permissions::trigger_local_network_prompt,
             system::get_system_profile

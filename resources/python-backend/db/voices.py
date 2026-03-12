@@ -38,6 +38,7 @@ class VoicesMixin:
                 gender=row["gender"],
                 voice_name=row["voice_name"],
                 voice_description=row["voice_description"],
+                transcript=row["transcript"],
                 voice_src=row["voice_src"],
                 is_global=bool(row["is_global"]),
                 created_at=row["created_at"],
@@ -51,6 +52,7 @@ class VoicesMixin:
         voice_name: str,
         gender: Optional[str] = None,
         voice_description: Optional[str] = None,
+        transcript: Optional[str] = None,
         voice_src: Optional[str] = None,
         is_global: bool = False,
     ) -> Optional[Voice]:
@@ -59,17 +61,27 @@ class VoicesMixin:
         created_at = time.time()
         cursor.execute(
             """
-            INSERT INTO voices (voice_id, gender, voice_name, voice_description, voice_src, is_global, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO voices (voice_id, gender, voice_name, voice_description, transcript, voice_src, is_global, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(voice_id) DO UPDATE SET
               gender = excluded.gender,
               voice_name = excluded.voice_name,
               voice_description = excluded.voice_description,
+              transcript = excluded.transcript,
               voice_src = excluded.voice_src,
               is_global = excluded.is_global,
               created_at = COALESCE(voices.created_at, excluded.created_at)
             """,
-            (voice_id, gender, voice_name, voice_description, voice_src, bool(is_global), created_at),
+            (
+                voice_id,
+                gender,
+                voice_name,
+                voice_description,
+                transcript,
+                voice_src,
+                bool(is_global),
+                created_at,
+            ),
         )
         conn.commit()
         conn.close()
@@ -88,6 +100,7 @@ class VoicesMixin:
             gender=row["gender"],
             voice_name=row["voice_name"],
             voice_description=row["voice_description"],
+            transcript=row["transcript"],
             voice_src=row["voice_src"],
             is_global=bool(row["is_global"]),
             created_at=row["created_at"],

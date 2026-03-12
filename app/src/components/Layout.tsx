@@ -168,6 +168,37 @@ const LayoutInner = () => {
 
   useEffect(() => {
     let cancelled = false;
+
+    const refreshDownloaded = async () => {
+      try {
+        const ids = await api.listDownloadedVoices();
+        if (!cancelled) setDownloadedVoiceIds(new Set(Array.isArray(ids) ? ids : []));
+      } catch {
+        if (!cancelled) setDownloadedVoiceIds(new Set());
+      }
+    };
+
+    const onExperienceUpdated = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ id?: string; name?: string; voice_id?: string }>).detail || {};
+      const selectedId = activeUser?.current_personality_id;
+      if (!selectedId || !detail?.id || String(detail.id) !== String(selectedId)) return;
+
+      if (typeof detail.name === 'string' && detail.name.trim()) {
+        setActivePersonalityName(detail.name.trim());
+      }
+      setActiveVoiceId(detail.voice_id ? String(detail.voice_id) : null);
+      void refreshDownloaded();
+    };
+
+    window.addEventListener('experience:updated', onExperienceUpdated as EventListener);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('experience:updated', onExperienceUpdated as EventListener);
+    };
+  }, [activeUser?.current_personality_id]);
+
+  useEffect(() => {
+    let cancelled = false;
     const loadDownloaded = async () => {
       try {
         const ids = await api.listDownloadedVoices();
@@ -348,11 +379,7 @@ const LayoutInner = () => {
                   </div>
                 </div>
               </div>
-              {voiceWs.error && (
-                <div className="mt-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2 font-mono text-xs text-red-700">
-                  {voiceWs.error}
-                </div>
-              )}
+              
             </div>
           </div>
         )}

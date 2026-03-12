@@ -193,11 +193,14 @@ export const TestPage = () => {
                 <img
                   src={voiceWs.characterImageSrc}
                   alt=""
-                  className="w-full h-full rounded-full border-2 border-black object-cover bg-white live-orb-image"
+                  className="w-full h-full rounded-full border border-gray-500 object-cover bg-white live-orb-image"
                   onError={() => setImageError(true)}
                 />
               ) : (
-                <div className="w-full h-full rounded-full border-2 border-black bg-[#9b5cff]" />
+                <div className="w-full h-full rounded-full border border-gray-500 bg-orange-50/50" style={{
+                            backgroundImage: `radial-gradient(circle, rgba(0,0,0,0.08) 1px, transparent 1px)`,
+                            backgroundSize: '6px 6px'
+                        }} />
               )}
             </div>
 
