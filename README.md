@@ -4,8 +4,6 @@
 
 [![OpenToys Demo](assets/demo.png)](https://youtu.be/YTIHN36Lb7M)
 
-# PCB Design
-
 # OpenToys
 
 Build your own Local AI Toys, Desk Companions, Robots and more with an ESP32. OpenToys runs fully on-device on Apple Silicon without sending your data to the cloud.
