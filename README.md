@@ -1,20 +1,29 @@
-# OpenToys
-
-Local AI version of the ElatoAI project on GitHub.
-
 ![OpenToys Cover](assets/cover.png)
+
+# Demo
 
 [![OpenToys Demo](assets/demo.png)](https://youtu.be/YTIHN36Lb7M)
 
-## What is OpenToys?
+# PCB Design
 
-OpenToys runs fully on-device for Apple Silicon and lets you build AI toys, companions, robots, and other local AI experiences without sending your data to the cloud.
+# OpenToys
+
+Build your own Local AI Toys, Desk Companions, Robots and more with an ESP32. OpenToys runs fully on-device on Apple Silicon without sending your data to the cloud.
+
+
+## Why OpenToys?
+
+- **Fully on-device**: No cloud, no subscriptions, no data leaving your home.
+- **Multilingual**: OpenToys supports multiple languages: English, Chinese, Spanish, French, Japanese and more!
+- **Voice Cloning**: Clone your own voice or your favorite characters with <10s of audio.
+- **Customizable**: Build your own toys, companions, robots and more with an ESP32.
+- **Open-source**: The community is open-source and free to use and contribute to.
 
 ## Core stack
 
-- TTS: Qwen3-TTS and Chatterbox
-- LLMs: any model from `mlx-community`
-- Platform focus: Apple Silicon
+- TTS: Qwen3-TTS and Chatterbox-turbo
+- LLMs: any LLM from `mlx-community` (Qwen, Llama, Mistral, etc.)
+- Platform focus: Apple Silicon (M1, M2, M3, M4...)
 - Privacy model: local-first, works without internet (after setup/model downloads)
 
 ## Download
@@ -48,7 +57,7 @@ OpenToys runs fully on-device for Apple Silicon and lets you build AI toys, comp
 ## Project Structure
 
 ```
-elato/
+open-toys/
 ├── app/
 ├── arduino/
 ├── resources/
@@ -57,4 +66,11 @@ elato/
 └── README.md
 ```
 
-Python 3.11 runtime is downloaded on first app setup into the app data directory.
+Python 3.11 runtime binary and packages are downloaded on first app setup into the app data directory.
+
+## License
+MIT
+
+---
+
+If you like this project, consider supporting us with a star ⭐️ on GitHub!
