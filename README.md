@@ -1,12 +1,12 @@
 ![OpenToys Cover](assets/cover.png)
 
-# OpenToys 
-
-Build your own Local AI Toys, Desk Companions, Robots and more with an ESP32. OpenToys enables multilingual realtime speech with voice cloning andruns fully on-device on Apple Silicon without sending your data to the cloud.
-
 # 🎥 Demo Video
 
 [![OpenToys Demo](assets/demo.png)](https://youtu.be/YTIHN36Lb7M)
+
+# OpenToys 
+
+Build your own Local AI Toys, Desk Companions, Robots and more with an ESP32. OpenToys enables multilingual realtime speech with voice cloning andruns fully on-device on Apple Silicon without sending your data to the cloud.
 
 ## Why OpenToys?
 
@@ -28,6 +28,16 @@ Build your own Local AI Toys, Desk Companions, Robots and more with an ESP32. Op
 ## App Design
 
 ![App Design](assets/app.png)
+
+## Cards & Stories
+Create experiences with personalities that can play games, tell stories, engage in educational conversations and more. Here are some example characters: Math Bear, Cosmo the Monkey, Bio Shark, Coach Carter and more!
+
+<div style="display:flex; flex-direction:row; align-items:center; flex-wrap:wrap; justify-content:center; gap: 10px;">
+<div style="display:inline-flex;"><img src="assets/card1.png" alt="Card 1" height="260" style="width: auto;" /></div>
+<div style="display:inline-flex;"><img src="assets/card2.png" alt="Card 2" height="260" style="width: auto;" /></div>
+<div style="display:inline-flex;"><img src="assets/card3.png" alt="Card 3" height="260" style="width: auto;" /></div>
+<div style="display:inline-flex;"><img src="assets/card4.png" alt="Card 4" height="260" style="width: auto;" /></div>
+</div>
 
 ## Stack
 
