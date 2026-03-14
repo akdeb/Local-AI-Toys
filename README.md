@@ -28,26 +28,7 @@ Build your own Local AI Toys, Desk Companions, Robots and more with an ESP32. Op
 ## ESP32 DIY Hardware
 
 ![ESP32 DIY Hardware](assets/pcb-design.png)
-
-## ESP32-S3 GPIO Pins (recommended)
-<table width="100%">
-<tr>
-<th align="left">Component / Signal</th>
-<th align="left">Pin</th>
-</tr>
-
-<tr><td>Blue LED</td><td>13</td></tr>
-<tr><td>Red LED</td><td>9</td></tr>
-<tr><td>Green LED</td><td>8</td></tr>
-<tr><td>I2S SD (Mic Data)</td><td>14</td></tr>
-<tr><td>I2S WS (Mic LRCLK)</td><td>4</td></tr>
-<tr><td>I2S SCK (Mic BCLK)</td><td>1</td></tr>
-<tr><td>I2S WS OUT</td><td>5</td></tr>
-<tr><td>I2S BCK OUT</td><td>6</td></tr>
-<tr><td>I2S DATA OUT</td><td>7</td></tr>
-<tr><td>I2S SD OUT</td><td>10</td></tr>
-<tr><td>Button / Touchpad</td><td>2</td></tr>
-</table>
+[Firmware details](https://www.elatoai.com/docs/blog/firmware)
 
 
 ## App Design
