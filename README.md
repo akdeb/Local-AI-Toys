@@ -7,7 +7,7 @@
   <a style="display:inline-flex;" href="https://discord.gg/KJWxDPBRUj"><img src="assets/discord.png" height="42" style="width: auto;"></a>
 <!-- <a style="display:inline-flex;" href="https://elatoai.com/home"><img src="assets/try.png" height="42" style="width: auto;"></a> -->
       <!-- <a style="display:inline-flex;" href="https://www.kickstarter.com/projects/elatoai/elato-make-toys-talk-with-ai-voices"><img src="assets/ks.png" height="42" style="width: auto;"></a> -->
- <!-- <a style="display:inline-flex;" href="https://www.elatoai.com/products/ai-devkit"><img src="assets/diy.png" height="42" style="width: auto;"></a> -->
+ <a style="display:inline-flex;" href="https://www.elatoai.com/products"><img src="assets/diy.png" height="42" style="width: auto;"></a>
 </div>
 </div>
 
