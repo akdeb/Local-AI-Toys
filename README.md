@@ -4,7 +4,7 @@
 
 [![OpenToys Demo](assets/demo.png)](https://youtu.be/Ld5r6vXNiOM)
 
-# OpenToys 
+# 👾 OpenToys 
 
 Build your own Local AI Toys, Desk Companions, Robots and more with an ESP32. OpenToys enables multilingual realtime speech with voice cloning andruns fully on-device on Apple Silicon without sending your data to the cloud.
 
@@ -28,7 +28,7 @@ Build your own Local AI Toys, Desk Companions, Robots and more with an ESP32. Op
 ## ESP32 DIY Hardware
 
 ![ESP32 DIY Hardware](assets/pcb-design.png)
-[Firmware details](https://www.elatoai.com/docs/blog/firmware)
+[Firmware details ⏭️](https://www.elatoai.com/docs/blog/firmware)
 
 
 ## App Design
