@@ -20,6 +20,8 @@ Build your own Local AI Toys, Desk Companions, Robots and more with an ESP32. Op
 
 [![OpenToys Demo](assets/demo.png)](https://www.youtube.com/watch?v=Ld5r6vXNiOM)
 
+## News
+- **2026-03-14:** We launched!🎉🎉 And it's Pi Day! If you're looking to run realtime AI models like OpenAI Realtime, Gemini, Eleven Labs and more, check it out [here](https://www.github.com/akdeb/ElatoAI). 
 
 ## Why OpenToys?
 
