@@ -16,7 +16,7 @@ Build your own Local AI Toys, Desk Companions, Robots and more with an ESP32. Op
 </div>
 </div>
 
-# 🎥 Demo Video
+## 🎥 Demo Video
 
 [![OpenToys Demo](assets/demo.png)](https://www.youtube.com/watch?v=Ld5r6vXNiOM)
 
