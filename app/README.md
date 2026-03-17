@@ -78,6 +78,16 @@ Create experiences with personalities that can play games, tell stories, engage 
 4. After flashing, the toy opens a WiFi captive portal (`ELATO`) for network setup.
 5. Put your Mac and toy on the same WiFi network; the toy reconnects when powered on while OpenToys is running.
 
+## 🛡️ Safety Considerations
+
+AI systems (local or cloud) are not perfect. This project is built with privacy in mind, but there are still important limitations:
+
+- **Hallucinations**: LLM and TTS models can give incorrect or misleading answers. This should not be treated as a source of truth.
+- **Inappropriate outputs**: Adversarial or ambiguous prompts can sometimes produce unsafe responses.
+- **Emotional impact**: AI should not replace real human interaction, especially for children.
+
+*When using with children, use with parental awareness and treat this as a tool for exploration, not authority.*
+
 ## Tested on ✅
 
 1. M1 Pro 2021 Macbook Pro

@@ -653,14 +653,43 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
 
         producer = asyncio.create_task(_llm_producer())
 
+        tts_batch_target_chars = 360 if tts_be == "qwen3-tts" else 240
+        tts_batch_max_chars = 460 if tts_be == "qwen3-tts" else 320
+        tts_batch_timeout = 0.9
+        tts_batch_max_sentences = 4
+        tts_batch_min_sentences = 2
+
+        async def _next_tts_phrase() -> tuple[Optional[str], bool]:
+            first = await text_queue.get()
+            if first is None:
+                return None, True
+            parts = [first]
+            chars = len(first)
+            ended = False
+            while len(parts) < tts_batch_max_sentences and chars < tts_batch_max_chars:
+                if len(parts) >= tts_batch_min_sentences and chars >= tts_batch_target_chars:
+                    break
+                try:
+                    nxt = await asyncio.wait_for(text_queue.get(), timeout=tts_batch_timeout)
+                except asyncio.TimeoutError:
+                    break
+                if nxt is None:
+                    ended = True
+                    break
+                parts.append(nxt)
+                chars += len(nxt)
+            phrase = " ".join(p for p in parts if p).strip()
+            return phrase, ended
+
         try:
             if for_esp32:
                 opus_packets: list[bytes] = []
                 opus = create_opus_packetizer(lambda pkt: opus_packets.append(pkt))
                 try:
+                    queue_ended = False
                     while True:
-                        phrase = await text_queue.get()
-                        if phrase is None:
+                        phrase, queue_ended = await _next_tts_phrase()
+                        if not phrase:
                             break
                         async for chunk in pipeline.synthesize_speech(phrase, cancel_event, ref_audio_path=ref_audio, ref_text=ref_text):
                             if cancel_event.is_set() or not ws_open:
@@ -674,6 +703,8 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
                                 except Exception:
                                     cancel_event.set()
                                     break
+                        if queue_ended:
+                            break
                 except Exception as e:
                     logger.error(f"{label} TTS stream error (esp32): {e}")
                     cancel_event.set()
@@ -694,9 +725,10 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
                 buffered = bytearray()
                 started = False
                 try:
+                    queue_ended = False
                     while True:
-                        phrase = await text_queue.get()
-                        if phrase is None:
+                        phrase, queue_ended = await _next_tts_phrase()
+                        if not phrase:
                             break
                         async for chunk in pipeline.synthesize_speech(phrase, cancel_event, ref_audio_path=ref_audio, ref_text=ref_text):
                             if cancel_event.is_set() or not ws_open:
@@ -710,6 +742,8 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
                                 started = True
                             else:
                                 await websocket.send_text(json.dumps({"type": "audio", "data": base64.b64encode(chunk).decode()}))
+                        if queue_ended:
+                            break
                 except Exception as e:
                     logger.error(f"{label} TTS stream error (desktop): {e}")
                     cancel_event.set()
@@ -789,6 +823,8 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
         finally:
             if for_esp32:
                 with suppress(Exception):
+                    await websocket.send_json({"type": "server", "msg": "RESPONSE.COMPLETE"})
+                with suppress(Exception):
                     await websocket.send_json({"type": "server", "msg": "SESSION.END"})
             if ws_open:
                 with suppress(Exception):
@@ -807,16 +843,19 @@ async def websocket_unified(websocket: WebSocket, client_type: str = Query(defau
     # --- Bedtime branch ---
 
     if _is_bedtime():
-        bedtime_sequence_task = asyncio.create_task(_run_bedtime_autoplay(for_esp32=is_esp32))
-        bedtime_disconnect_task = asyncio.create_task(_wait_for_bedtime_disconnect())
-        done, pending = await asyncio.wait(
-            {bedtime_sequence_task, bedtime_disconnect_task}, return_when=asyncio.FIRST_COMPLETED,
-        )
-        cancel_event.set()
-        for t in pending:
-            t.cancel()
-            with suppress(asyncio.CancelledError, Exception):
-                await t
+        if is_esp32:
+            await _run_bedtime_autoplay(for_esp32=True)
+        else:
+            bedtime_sequence_task = asyncio.create_task(_run_bedtime_autoplay(for_esp32=False))
+            bedtime_disconnect_task = asyncio.create_task(_wait_for_bedtime_disconnect())
+            _done, pending = await asyncio.wait(
+                {bedtime_sequence_task, bedtime_disconnect_task}, return_when=asyncio.FIRST_COMPLETED,
+            )
+            cancel_event.set()
+            for t in pending:
+                t.cancel()
+                with suppress(asyncio.CancelledError, Exception):
+                    await t
         return
 
     # --- Normal message loop ---
