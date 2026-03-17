@@ -54,10 +54,10 @@ Build your own Local AI Toys, Desk Companions, Robots and more with an ESP32. Op
 Create experiences with personalities that can play games, tell stories, engage in educational conversations. Here are some example characters: Math Bear, Cosmo the Monkey, Chef Hippo, Coach Carter and more!
 
 <p align="center">
-<img src="assets/card1.png" height="280">
-<img src="assets/card2.png" height="280">
-<img src="assets/card3.png" height="280">
-<img src="assets/card4.png" height="280">
+<img src="assets/card1.png" height="300">
+<img src="assets/card2.png" height="300">
+<img src="assets/card3.png" height="300">
+<img src="assets/card4.png" height="300">
 </p>
 
 ## Stack
