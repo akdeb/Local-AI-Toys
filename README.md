@@ -41,11 +41,6 @@ Build your own Local AI Toys, Desk Companions, Robots and more with an ESP32. Op
 ![ESP32 DIY Hardware](assets/pcb-design.png)
 [Firmware Docs ⏭️](https://www.elatoai.com/docs/blog/firmware)
 
-
-## App Design
-
-![App Design](assets/app.png)
-
 ## Cards & Stories
 Create experiences with personalities that can play games, tell stories, engage in educational conversations. Here are some example characters: Math Bear, Cosmo the Monkey, Bio Shark, Coach Carter and more!
 
