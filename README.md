@@ -1,4 +1,10 @@
-![OpenToys Cover](assets/cover.png)
+<!-- ![OpenToys Cover](assets/cover.png) -->
+
+
+
+# 🎥 Demo Video
+
+[![OpenToys Demo](assets/opentoys.gif)](https://www.youtube.com/watch?v=YTIHN36Lb7M)
 
 <div align="center">
 <div style="display:flex; flex-direction:row; align-items:center; flex-wrap:wrap; justify-content:center;">
@@ -7,13 +13,9 @@
   <a style="display:inline-flex;" href="https://discord.gg/KJWxDPBRUj"><img src="assets/discord.png" height="42" style="width: auto;"></a>
 <!-- <a style="display:inline-flex;" href="https://elatoai.com/home"><img src="assets/try.png" height="42" style="width: auto;"></a> -->
       <!-- <a style="display:inline-flex;" href="https://www.kickstarter.com/projects/elatoai/elato-make-toys-talk-with-ai-voices"><img src="assets/ks.png" height="42" style="width: auto;"></a> -->
- <a style="display:inline-flex;" href="https://www.elatoai.com/products"><img src="assets/diy.png" height="42" style="width: auto;"></a>
+ <!-- <a style="display:inline-flex;" href="https://www.elatoai.com/products"><img src="assets/diy.png" height="42" style="width: auto;"></a> -->
 </div>
 </div>
-
-# 🎥 Demo Video
-
-[![OpenToys Demo](assets/opentoys.gif)](https://www.youtube.com/watch?v=YTIHN36Lb7M)
 
 # 👾 OpenToys 
 
