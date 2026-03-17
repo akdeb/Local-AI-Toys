@@ -51,19 +51,13 @@ Build your own Local AI Toys, Desk Companions, Robots and more with an ESP32. Op
 [Firmware Docs ⏭️](https://www.elatoai.com/docs/blog/firmware)
 
 ## Cards & Stories
-Create experiences with personalities that can play games, tell stories, engage in educational conversations. Here are some of the default characters with more details in (personalities.json)[app/src/assets/personalities.json].
+Create experiences with personalities that can play games, tell stories, engage in educational conversations. Here are some of the default characters with more prompt details in [personalities.json](./app/src/assets/personalities.json).
 
 <p align="center">
   <img src="assets/card1.png" width="24%">
   <img src="assets/card2.png" width="24%">
   <img src="assets/card3.png" width="24%">
   <img src="assets/card4.png" width="24%">
-</p>
-<p align="center">
-  <img src="assets/card5.png" width="24%">
-  <img src="assets/card6.png" width="24%">
-  <img src="assets/card7.png" width="24%">
-  <img src="assets/card8.png" width="24%">
 </p>
 
 ## Stack
