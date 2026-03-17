@@ -31,7 +31,12 @@ Build your own Local AI Toys, Desk Companions, Robots and more with an ESP32. Op
 - **Customizable**: Build your own toys, companions, robots and more with an ESP32.
 - **Open-source**: The community is open-source and free to use and contribute to.
 
-## 🚀 Quick Start
+## Download & Install
+
+- Direct DMG: [OpenToys_0.1.0_aarch64.dmg](https://github.com/akdeb/open-toys/releases/latest/download/OpenToys_0.1.0_aarch64.dmg)
+- All releases: [GitHub Releases](https://github.com/akdeb/open-toys/releases)
+
+## 🚀 Quick Start (for development)
 
 1. Clone the repository with `git clone https://github.com/akdeb/open-toys.git`
 2. Install Rust and Tauri with `curl https://sh.rustup.rs -sSf | sh`
@@ -63,11 +68,6 @@ Create experiences with personalities that can play games, tell stories, engage 
 - App: Tauri, React, Tailwind CSS, TypeScript, Rust
 - Platform focus: Apple Silicon (M1/2/3/4/5)
 - Hardware device: ESP32-S3
-
-## Download
-
-- Direct DMG: [OpenToys_0.1.0_aarch64.dmg](https://github.com/akdeb/open-toys/releases/latest/download/OpenToys_0.1.0_aarch64.dmg)
-- All releases: [GitHub Releases](https://github.com/akdeb/open-toys/releases)
 
 ## ⚡️ Flash to ESP32
 
