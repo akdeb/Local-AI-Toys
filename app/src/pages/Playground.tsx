@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import { Image as ImageIcon, Pencil, BookOpen, Moon, Maximize2 } from 'lucide-react';
+import { Image as ImageIcon, Pencil, BookOpen, Moon, Maximize2, EyeOff, Eye, ChevronDown, ChevronRight } from 'lucide-react';
 import { useActiveUser } from '../state/ActiveUserContext';
 import { ExperienceModal, ExperienceForModal } from '../components/ExperienceModal';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -21,6 +21,7 @@ export const Playground = () => {
   const [voices, setVoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
   const [brokenImgById, setBrokenImgById] = useState<Record<string, boolean>>({});
   const [imgRefreshById, setImgRefreshById] = useState<Record<string, number>>({});
   const [downloadedVoiceIds, setDownloadedVoiceIds] = useState<Set<string>>(new Set());
@@ -75,7 +76,7 @@ export const Playground = () => {
   const load = async () => {
     try {
       setError(null);
-      const data = await api.getExperiences(false, activeTab);
+      const data = await api.getExperiences(true, activeTab);
       setExperiences(data);
       setBrokenImgById({});
     } catch (e: any) {
@@ -98,6 +99,15 @@ export const Playground = () => {
     });
     return arr;
   }, [experiences]);
+
+  const visibleExperiences = useMemo(
+    () => sortedExperiences.filter((p) => Boolean(p?.is_visible)),
+    [sortedExperiences]
+  );
+  const hiddenExperiences = useMemo(
+    () => sortedExperiences.filter((p) => !Boolean(p?.is_visible)),
+    [sortedExperiences]
+  );
 
   useEffect(() => {
     setLoading(true);
@@ -197,6 +207,17 @@ export const Playground = () => {
     }
   };
 
+  const setExperienceVisible = async (p: any, visible: boolean) => {
+    if (!p || p?.is_global) return;
+    try {
+      setError(null);
+      await api.updateExperience(String(p.id), { is_visible: visible });
+      await load();
+    } catch (err: any) {
+      setError(err?.message || `Failed to ${visible ? 'unhide' : 'hide'} character`);
+    }
+  };
+
   const voiceById = useMemo(() => {
     const m = new Map<string, any>();
     for (const v of voices) {
@@ -257,6 +278,108 @@ export const Playground = () => {
     }
   };
 
+  const renderCard = (p: any, opts?: { hidden?: boolean }) => {
+    const isHidden = Boolean(opts?.hidden);
+    return (
+      <div
+        key={p.id}
+        id={`experience-${p.id}`}
+        role="button"
+        tabIndex={0}
+        onClick={() => {
+          if (isHidden) return;
+          assignToActiveUser(p.id);
+        }}
+        onKeyDown={(e) => {
+          if (isHidden) return;
+          if (e.key === 'Enter' || e.key === ' ') assignToActiveUser(p.id);
+        }}
+        className={`retro-card group text-left transition-shadow flex flex-col ${isHidden ? 'cursor-default' : 'cursor-pointer'} ${activeUser?.current_personality_id === p.id ? 'retro-selected' : 'retro-not-selected'}`}
+        style={{ padding: "0rem" }}
+      >
+        <div className={`flex flex-col items-start gap-4`}>
+          <div className={`w-full`}>
+            <div
+              className={`w-full h-[160px] rounded-t-[24px] bg-orange-50/50 flex items-center justify-center ${isHidden ? '' : 'cursor-pointer'} overflow-hidden`}
+              style={{
+                backgroundImage: `radial-gradient(circle, rgba(0,0,0,0.08) 1px, transparent 1px)`,
+                backgroundSize: '6px 6px'
+              }}
+              title={isHidden ? "Hidden character" : (!p.is_global ? "Upload image" : "")}
+            >
+              {imgSrcFor(p) && !brokenImgById[String(p.id)] ? (
+                <div className="w-full h-full flex items-center justify-center overflow-hidden">
+                  <img
+                    src={imgSrcFor(p) || ''}
+                    alt=""
+                    className="h-full w-full object-cover object-center origin-center transition-transform duration-200 group-hover:scale-105"
+                    onError={() => {
+                      setBrokenImgById((prev) => ({ ...prev, [String(p.id)]: true }));
+                    }}
+                  />
+                </div>
+              ) : (
+                <ImageIcon size={18} className="text-gray-600" />
+              )}
+            </div>
+          </div>
+
+          <div className="min-w-0 relative flex-1 px-4 pt-2 pb-4">
+            <div className="absolute top-2 right-2 flex flex-col items-center gap-2 z-10">
+              {isHidden ? (
+                <button
+                  type="button"
+                  className="retro-icon-btn"
+                  aria-label="Unhide"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void setExperienceVisible(p, true);
+                  }}
+                  title="Unhide"
+                >
+                  <EyeOff size={16} />
+                </button>
+              ) : (
+                <>
+                  {p.is_global && (
+                    <button
+                      type="button"
+                      className="retro-icon-btn"
+                      aria-label="Details"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setInfoExperience(p);
+                        setInfoOpen(true);
+                      }}
+                      title="Details"
+                    >
+                      <Maximize2 size={16} />
+                    </button>
+                  )}
+                  {!p.is_global && (
+                    <button
+                      type="button"
+                      className="retro-icon-btn"
+                      aria-label="Edit"
+                      onClick={(e) => handleEdit(p, e)}
+                      title="Edit"
+                    >
+                      <Pencil size={16} />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+            <h3 className="text-lg font-black leading-tight wrap-break-word w-[96%] retro-clamp-2">{p.name}</h3>
+            <p className="text-gray-400 text-xs font-medium mt-2 retro-clamp-2">
+              {p.short_description ? String(p.short_description) : '—'}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div>
       <ExperienceModal 
@@ -299,6 +422,9 @@ export const Playground = () => {
         }}
         onDelete={selectedExperience ? async () => {
           await deleteExperience(selectedExperience);
+        } : undefined}
+        onHide={selectedExperience && !selectedExperience?.is_global ? async () => {
+          await setExperienceVisible(selectedExperience, false);
         } : undefined}
         onClose={() => setModalOpen(false)}
         onSuccess={async () => {
@@ -434,109 +560,31 @@ export const Playground = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-8">
-        {sortedExperiences.map((p) => (
-          <div
-            key={p.id}
-            id={`experience-${p.id}`}
-            role="button"
-            tabIndex={0}
-            onClick={() => assignToActiveUser(p.id)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') assignToActiveUser(p.id);
-            }}
-            className={`retro-card group text-left cursor-pointer transition-shadow flex flex-col ${activeUser?.current_personality_id === p.id ? 'retro-selected' : 'retro-not-selected'}`}
-style={{
-  padding: "0rem"
-}}
-          >
-            <div className={`flex flex-col items-start gap-4`}>
-              <div className={`w-full`}>
-                {!p.is_global ? (
-                  <div
-                    className={`w-full h-[160px] rounded-t-[24px] bg-orange-50/50 flex items-center justify-center cursor-pointer overflow-hidden`}
-style={{
-                            backgroundImage: `radial-gradient(circle, rgba(0,0,0,0.08) 1px, transparent 1px)`,
-                            backgroundSize: '6px 6px'
-                        }}
-                    title="Upload image"
-                  >
-                    {imgSrcFor(p) && !brokenImgById[String(p.id)] ? (
-                      <div className="w-full h-full flex items-center justify-center overflow-hidden">
-                        <img
-                          src={imgSrcFor(p) || ''}
-                          alt=""
-                          className="h-full w-full object-cover object-center origin-center transition-transform duration-200 group-hover:scale-105"
-                          onError={() => {
-                            setBrokenImgById((prev) => ({ ...prev, [String(p.id)]: true }));
-                          }}
-                        />
-                      </div>
-                    ) : (
-                      <ImageIcon size={18} className="text-gray-600" />
-                    )}
-                  </div>
-                ) : (
-                  <div className="w-full h-[160px] rounded-t-[24px] bg-orange-50/50 flex items-center justify-center overflow-hidden"                         
-style={{
-                            backgroundImage: `radial-gradient(circle, rgba(0,0,0,0.08) 1px, transparent 1px)`,
-                            backgroundSize: '6px 6px'
-                        }}>
-                    {imgSrcFor(p) && !brokenImgById[String(p.id)] ? (
-                      <div className="w-full h-full flex items-center justify-center overflow-hidden">
-                        <img
-                          src={imgSrcFor(p) || ''}
-                          alt=""
-                          className="h-full w-full object-cover object-center origin-center transition-transform duration-200 group-hover:scale-105"
-                          onError={() => {
-                            setBrokenImgById((prev) => ({ ...prev, [String(p.id)]: true }));
-                          }}
-                        />
-                      </div>
-                    ) : (
-                      <ImageIcon size={18} className="text-gray-600" />
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="min-w-0 relative flex-1 px-4 pt-2 pb-4">
-            <div className="absolute top-2 right-2 flex flex-col items-center gap-2 z-10">
-              {p.is_global && (
-                <button
-                  type="button"
-                  className="retro-icon-btn"
-                  aria-label="Details"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setInfoExperience(p);
-                    setInfoOpen(true);
-                  }}
-                  title="Details"
-                >
-                  <Maximize2 size={16} />
-                </button>
-              )}
-              {!p.is_global && (
-                <button
-                  type="button"
-                  className="retro-icon-btn"
-                  aria-label="Edit"
-                  onClick={(e) => handleEdit(p, e)}
-                  title="Edit"
-                >
-                  <Pencil size={16} />
-                </button>
-              )}
-            </div>
-                <h3 className="text-lg font-black leading-tight wrap-break-word w-[96%] retro-clamp-2">{p.name}</h3>
-                <p className="text-gray-400 text-xs font-medium mt-2 retro-clamp-2">
-                  {p.short_description ? String(p.short_description) : '—'}
-                </p>
-              </div>
-            </div>
-          </div>
-        ))}
+        {visibleExperiences.map((p) => renderCard(p))}
       </div>
+      {hiddenExperiences.length > 0 && (
+        <div className="pt-8">
+          <button
+            type="button"
+            onClick={() => setShowHidden((prev) => !prev)}
+            className="w-full flex items-center gap-3 text-gray-600 hover:text-black transition-colors"
+          >
+            <div className="h-px bg-gray-300 flex-1" />
+            <span className="inline-flex items-center gap-2 font-mono text-sm uppercase tracking-wide">
+              {showHidden ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              Hidden ({hiddenExperiences.length})
+              <Eye size={14} />
+            </span>
+            <div className="h-px bg-gray-300 flex-1" />
+          </button>
+
+          {showHidden && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-6">
+              {hiddenExperiences.map((p) => renderCard(p, { hidden: true }))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
