@@ -1,27 +1,28 @@
-<!-- ![OpenToys Cover](assets/cover.png) -->
-![OpenToys Demo](assets/open-toys.gif)
-
 # 👾 OpenToys 
 
-Build your own Local AI Toys, Desk Companions, Robots and more with an ESP32. OpenToys enables multilingual realtime speech with voice cloning andruns fully on-device on Apple Silicon without sending your data to the cloud.
+Make your own conversational Local AI Toys, Desk Companions, Robots and more with an ESP32. OpenToys enables multilingual realtime speech with voice cloning and runs fully on-device on Apple Silicon chips without sending your data to the cloud.
 
 <div align="center">
 <div style="display:flex; flex-direction:row; align-items:center; flex-wrap:wrap; justify-content:center;">
-  <!-- <a style="display:inline-flex;" href="https://cookbook.openai.com/examples/voice_solutions/running_realtime_api_speech_on_esp32_arduino_edge_runtime_elatoai"><img src="assets/oai.png" height="42" style="width: auto;"></a>   -->
-  <!-- <a style="display:inline-flex;" href="https://www.elatoai.com/docs"><img src="assets/docs.png" height="42" style="width: auto;"></a>
-  <a style="display:inline-flex;" href="https://discord.gg/KJWxDPBRUj"><img src="assets/discord.png" height="42" style="width: auto;"></a> -->
-<!-- <a style="display:inline-flex;" href="https://elatoai.com/home"><img src="assets/try.png" height="42" style="width: auto;"></a> -->
-      <!-- <a style="display:inline-flex;" href="https://www.kickstarter.com/projects/elatoai/elato-make-toys-talk-with-ai-voices"><img src="assets/ks.png" height="42" style="width: auto;"></a> -->
- <!-- <a style="display:inline-flex;" href="https://www.elatoai.com/products"><img src="assets/diy.png" height="42" style="width: auto;"></a> -->
+  <!-- <a style="display:inline-flex;" href="https://cookbook.openai.com/examples/voice_solutions/running_realtime_api_speech_on_esp32_arduino_edge_runtime_elatoai"><img src="../assets/oai.png" height="42" style="width: auto;"></a>   -->
+  <!-- <a style="display:inline-flex;" href="https://www.elatoai.com/docs"><img src="../assets/docs.png" height="42" style="width: auto;"></a>
+  <a style="display:inline-flex;" href="https://discord.gg/KJWxDPBRUj"><img src="../assets/discord.png" height="42" style="width: auto;"></a> -->
+<!-- <a style="display:inline-flex;" href="https://elatoai.com/home"><img src="../assets/try.png" height="42" style="width: auto;"></a> -->
+      <!-- <a style="display:inline-flex;" href="https://www.kickstarter.com/projects/elatoai/elato-make-toys-talk-with-ai-voices"><img src="../assets/ks.png" height="42" style="width: auto;"></a> -->
+ <!-- <a style="display:inline-flex;" href="https://www.elatoai.com/products"><img src="../assets/diy.png" height="42" style="width: auto;"></a> -->
 </div>
 </div>
+
+## News
+- **2026-03-14:** OpenToys launched🎉 And it's Pi Day! If you're looking to run realtime AI models like OpenAI Realtime, Gemini, Eleven Labs and more on your ESP32 device, check it out [here](https://www.github.com/akdeb/ElatoAI). 
 
 ## 🎥 Demo Video
 
-[![OpenToys Demo](assets/demo.png)](https://www.youtube.com/watch?v=Ld5r6vXNiOM)
+[![OpenToys Demo](../assets/demo.png)](https://www.youtube.com/watch?v=Ld5r6vXNiOM)
 
-## News
-- **2026-03-14:** We launched!🎉🎉 And it's Pi Day! If you're looking to run realtime AI models like OpenAI Realtime, Gemini, Eleven Labs and more on your ESP32 device, check it out [here](https://www.github.com/akdeb/ElatoAI). 
+## App Design
+<!-- ![OpenToys Cover](../assets/cover.png) -->
+![OpenToys Demo](../assets/open-toys.gif)
 
 ## Why OpenToys?
 
@@ -47,17 +48,17 @@ Build your own Local AI Toys, Desk Companions, Robots and more with an ESP32. Op
 
 ## ESP32 DIY Hardware
 
-![ESP32 DIY Hardware](assets/pcb-design.png)
+![ESP32 DIY Hardware](../assets/pcb-design.png)
 [Firmware Docs ⏭️](https://www.elatoai.com/docs/blog/firmware)
 
 ## Cards & Stories
-Create experiences with personalities that can play games, tell stories, engage in educational conversations. Here are some of the default characters with more prompt details in [personalities.json](./app/src/assets/personalities.json).
+Create experiences with personalities that can play games, tell stories, engage in educational conversations. Here are some of the default characters with more prompt details in [personalities.json](./app/src/../assets/personalities.json).
 
 <p align="center">
-  <img src="assets/card1.png" width="24%">
-  <img src="assets/card2.png" width="24%">
-  <img src="assets/card3.png" width="24%">
-  <img src="assets/card4.png" width="24%">
+  <img src="../assets/card1.png" width="24%">
+  <img src="../assets/card2.png" width="24%">
+  <img src="../assets/card3.png" width="24%">
+  <img src="../assets/card4.png" width="24%">
 </p>
 
 ## Stack
