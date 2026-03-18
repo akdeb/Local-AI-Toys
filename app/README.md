@@ -1,9 +1,6 @@
-<!-- ![OpenToys Cover](../assets/cover.png) -->
-![OpenToys Demo](../assets/open-toys.gif)
-
 # 👾 OpenToys 
 
-Build your own Local AI Toys, Desk Companions, Robots and more with an ESP32. OpenToys enables multilingual realtime speech with voice cloning andruns fully on-device on Apple Silicon without sending your data to the cloud.
+Make your own conversational Local AI Toys, Desk Companions, Robots and more with an ESP32. OpenToys enables multilingual realtime speech with voice cloning and runs fully on-device on Apple Silicon chips without sending your data to the cloud.
 
 <div align="center">
 <div style="display:flex; flex-direction:row; align-items:center; flex-wrap:wrap; justify-content:center;">
@@ -16,12 +13,16 @@ Build your own Local AI Toys, Desk Companions, Robots and more with an ESP32. Op
 </div>
 </div>
 
+## News
+- **2026-03-14:** OpenToys launched🎉 And it's Pi Day! If you're looking to run realtime AI models like OpenAI Realtime, Gemini, Eleven Labs and more on your ESP32 device, check it out [here](https://www.github.com/akdeb/ElatoAI). 
+
 ## 🎥 Demo Video
 
 [![OpenToys Demo](../assets/demo.png)](https://www.youtube.com/watch?v=Ld5r6vXNiOM)
 
-## News
-- **2026-03-14:** We launched!🎉🎉 And it's Pi Day! If you're looking to run realtime AI models like OpenAI Realtime, Gemini, Eleven Labs and more on your ESP32 device, check it out [here](https://www.github.com/akdeb/ElatoAI). 
+## App Design
+<!-- ![OpenToys Cover](../assets/cover.png) -->
+![OpenToys Demo](../assets/open-toys.gif)
 
 ## Why OpenToys?
 
