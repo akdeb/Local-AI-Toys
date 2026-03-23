@@ -306,7 +306,6 @@ const LayoutInner = () => {
                     <div className="mt-1 font-black text-base text-black truncate">{activePersonalityName || '—'}</div>
                   </div>
                 </div>
-
                 <div className="flex items-center gap-3">
                   <div className="flex flex-col items-end">
                     {!localActive && !deviceConnected && (
@@ -378,7 +377,11 @@ const LayoutInner = () => {
                   </div>
                 </div>
               </div>
-              
+              <div className="mt-2 px-2 text-center">
+                <div className="inline-block rounded-full bg-white/80 border border-gray-200 px-3 py-1 text-[11px] leading-none font-mono text-gray-500 shadow-sm">
+                  The AI models can be wrong. Please verify important information.
+                </div>
+              </div>
             </div>
           </div>
         )}

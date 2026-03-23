@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import llms from "../assets/llms.json";
 
 export type LlmOption = {
@@ -57,18 +57,7 @@ export const LlmSelector = ({
     () => OPTIONS.find((opt) => opt.repo_id === value),
     [value]
   );
-  const [mode, setMode] = useState<"preset" | "custom">(presetMatch ? "preset" : "custom");
-  const [customRepo, setCustomRepo] = useState(presetMatch ? "" : value);
-
-  useEffect(() => {
-    const match = OPTIONS.find((opt) => opt.repo_id === value);
-    setMode(match ? "preset" : "custom");
-    if (!match) {
-      setCustomRepo(value);
-    }
-  }, [value]);
-
-  const selectedInfo = presetMatch || OPTIONS.find((opt) => opt.repo_id === customRepo);
+  const selectedInfo = presetMatch;
   const selectedUsage = selectedInfo ? estimateUsage(selectedInfo) : null;
   const selectedFit = selectedUsage ? fitLabel(selectedUsage.ramGb, systemMemoryGb) : null;
 
@@ -81,16 +70,9 @@ export const LlmSelector = ({
       <div className="flex gap-2">
         <select
           className="retro-input bg-white flex-1 border border-gray-200"
-          value={mode === "preset" ? presetMatch?.repo_id || "" : "__custom__"}
+          value={presetMatch?.repo_id || ""}
           onChange={(e) => {
-            const next = e.target.value;
-            if (next === "__custom__") {
-              setMode("custom");
-              if (customRepo) onChange(customRepo);
-              return;
-            }
-            setMode("preset");
-            onChange(next);
+            onChange(e.target.value);
           }}
           disabled={disabled}
         >
@@ -102,24 +84,8 @@ export const LlmSelector = ({
               {opt.name}
             </option>
           ))}
-          <option value="__custom__">Custom repo…</option>
         </select>
       </div>
-
-      {mode === "custom" && (
-        <input
-          type="text"
-          value={customRepo}
-          onChange={(e) => {
-            const next = e.target.value.trim();
-            setCustomRepo(next);
-            onChange(next);
-          }}
-          placeholder="e.g. mlx-community/Qwen3-4B-4bit"
-          className="retro-input bg-white w-full"
-          disabled={disabled}
-        />
-      )}
 
       {selectedInfo && selectedUsage && (
         <div className="text-xs text-gray-600">
