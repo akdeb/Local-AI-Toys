@@ -18,7 +18,7 @@ Make your own conversational Local AI Voice Clones, Toys, Desk Companions, Robot
 
 ## 🎥 Demo Video
 
-[![OpenToys Demo](assets/demo.png)](https://www.youtube.com/watch?v=Ld5r6vXNiOM)
+[![OpenToys Demo](assets/demo.png)](https://youtu.be/V5uNgMRsBHE)
 
 ## App Design
 <!-- ![OpenToys Cover](assets/cover.png) -->
