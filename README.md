@@ -2,7 +2,7 @@
 
 <br>
 
-# 👾 Elato Local
+# 👾 OpenToys
 
 ### Open-Source Local Voice AI for Toys, Companions, and Robots
 
@@ -18,12 +18,9 @@
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 [![Releases](https://img.shields.io/badge/Download-Latest%20DMG-brightgreen)](https://github.com/akdeb/open-toys/releases/latest/download/OpenToys_0.1.0_aarch64.dmg)
 
-<br>
 
 > *Build conversational voice AI apps for toys, companions, and robots that run fully local on your Mac.*
 > *No cloud required for runtime, no subscription lock-in, and your data stays on-device.*
-
-<br>
 
 </div>
 
